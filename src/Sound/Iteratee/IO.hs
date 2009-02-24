@@ -14,6 +14,7 @@ import Data.Iteratee.Base
 import Data.Iteratee.Binary()
 import Data.Iteratee.IO.Base
 import Data.Int
+import Control.Monad.State
 
 import System.Posix hiding (FileOffset)
 import Foreign.Ptr
@@ -25,76 +26,57 @@ import System.IO (SeekMode(..))
 -- ------------------------------------------------------------------------
 -- Binary Random IO enumerators
 
--- |The enumerator of a POSIX File Descriptor.  This version enumerates
--- over the entire contents of a file, in order, unless stopped by
--- the iteratee.  In particular, seeking is not supported.
-enum_fd :: ReadableChunk s el => Fd -> EnumeratorGM s el IO a
-enum_fd fd iter' = IM $ allocaBytes (fromIntegral buffer_size) $ loop iter'
-  where
-    buffer_size = 4096
-    loop iter@IE_done{} _p = return iter
-    loop _iter@IE_jmp{} _p = error "enum_fd is not compatabile with seek IO"
-    loop (IE_cont step) p = do
-      n <- myfdRead fd (castPtr p) buffer_size
-      case n of
-        Left _errno -> unIM $ step (Err "IO error")
-        Right 0 -> return iter'
-        Right n' -> do
-          s <- readFromPtr p (fromIntegral n')
-          im <- unIM $ step (Chunk s)
-	  loop im p
-
 -- |The enumerator of a POSIX File Descriptor: a variation of enum_fd that
 -- supports RandomIO (seek requests)
 -- TODO: modify this to support AudioStack instead of just IO.
-enum_fd_random :: ReadableChunk s el => Fd -> EnumeratorGM s el AudioStack a
-enum_fd_random fd iter =
- IM $ allocaBytes (fromIntegral buffer_size) (loop (0,0) iter)
+enum_fd_random :: ReadableChunk s el =>
+                  Fd ->
+                  AudioStreamState ->
+                  EnumeratorGM s el AudioStack a
+enum_fd_random fd st iter =
+ IM $ liftIO $ allocaBytes (fromIntegral buffer_size) (loop st (0,0) iter)
  where
-  -- this can be usefully varied.  Values between 512 and 4096 seem
-  -- to provide the best performance for most cases.
   buffer_size = 4096
-  -- the first argument of loop is (off,len), describing which part
+  -- the second argument of loop is (off,len), describing which part
   -- of the file is currently in the buffer 'p'
   loop :: (ReadableChunk s el) =>
+          AudioStreamState ->
           (FileOffset,Int) ->
-          IterateeG s el IO a -> 
+          IterateeG s el AudioStack a ->
 	  Ptr el ->
-          IO (IterateeG s el IO a)
-  loop _pos iter'@IE_done{} _p = return iter'
-  loop pos@(off,len) (IE_jmp off' c) p | 
+          IO (IterateeG s el AudioStack a)
+  loop _sst _pos iter'@IE_done{} _p = return iter'
+  loop sst pos@(off,len) (IE_jmp off' c) p | 
     off <= off' && off' < off + fromIntegral len =	-- Seek within buffer p
     do
     let local_off = fromIntegral $ off' - off
-    s <- readFromPtr (p `plusPtr` local_off) (len - local_off)
-    im <- unIM $ c (Chunk s)
-    loop pos im p
-  loop _pos iter'@(IE_jmp off c) p = do -- Seek outside the buffer
+    str <- readFromPtr (p `plusPtr` local_off) (len - local_off)
+    (im, s) <- runStateT (unIM $ c (Chunk str)) sst
+    loop s pos im p
+  loop sst _pos iter'@(IE_jmp off c) p = do -- Seek outside the buffer
    off' <- myfdSeek fd AbsoluteSeek (fromIntegral off)
    case off' of
-    Left _errno -> unIM $ enum_err "IO error" iter'
-    Right off''  -> loop (off'',0) (IE_cont c) p
-    -- Thanks to John Lato for the strictness annotation
-    -- Otherwise, the `off + fromIntegral len' below accumulates thunks
-  loop (off,len) _iter' _p | off `seq` len `seq` False = undefined
-  loop (off,len) iter'@(IE_cont step) p = do
+    Left _errno -> evalStateT (unIM $ enum_err "IO error" iter') sst
+    Right off''  -> loop sst (off'',0) (IE_cont c) p
+  loop _sst (off,len) _iter' _p | off `seq` len `seq` False = undefined
+  loop sst (off,len) iter'@(IE_cont step) p = do
    n <- myfdRead fd (castPtr p) buffer_size
    case n of
-    Left _errno -> unIM $ step (Err "IO error")
+    Left _errno -> evalStateT (unIM $ step (Err "IO error")) sst
     Right 0 -> return iter'
     Right n' -> do
          s <- readFromPtr p (fromIntegral n')
-         im <- unIM $ step (Chunk s)
-	 loop (off + fromIntegral len,fromIntegral n') im p
+         (im, sst') <- runStateT (unIM $ step (Chunk s)) sst
+	 loop sst' (off + fromIntegral len,fromIntegral n') im p
 
 -- |Process a file using the given IterateeGM.  This function wraps
 -- enum_fd_random as a convenience.
-file_driver_rb :: ReadableChunk s el => IterateeGM s el IO a ->
+file_driver_rb :: ReadableChunk s el => IterateeGM s el AudioStack a ->
                FilePath ->
                IO (Either (String, a) a)
 file_driver_rb iter filepath = do
   fd <- openFd filepath ReadOnly Nothing defaultFileFlags
-  result <- unIM $ (enum_fd_random fd >. enum_eof) ==<< iter
+  result <- evalStateT (unIM $ (enum_fd_random fd NoState >. enum_eof) ==<< iter) NoState
   closeFd fd
   print_res result
  where
