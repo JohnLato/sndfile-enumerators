@@ -1,5 +1,6 @@
 {-# LANGUAGE RankNTypes #-}
 module Sound.Iteratee.Codecs.Wave (
+  WaveCodec (..),
   WAVEDE (..),
   WAVEDE_ENUM (..),
   WAVE_CHUNK (..),
@@ -18,6 +19,7 @@ module Sound.Iteratee.Codecs.Wave (
 )
 where
 
+import Sound.Iteratee.Base
 import Data.Iteratee.Base
 import Data.Iteratee.Binary
 import qualified Data.StorableVector as Vec
@@ -44,6 +46,12 @@ type V    = Vec.Vector
 -- determine host endian-ness
 be :: Bool
 be = (==1) $ unsafePerformIO $ FMU.with (1 :: Word16) (\p -> peekByteOff p 1 :: IO Word8)
+
+-- |Data type to specify WAVE-formatted data.
+data WaveCodec = WaveCodec
+
+instance WritableAudio WaveCodec where
+  emptyState WaveCodec = WaveState 0 0
 
 -- |A WAVE directory is a list associating WAVE chunks with
 -- a record WAVEDE
