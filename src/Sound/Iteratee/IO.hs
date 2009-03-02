@@ -30,11 +30,10 @@ import System.IO (SeekMode(..))
 
 -- |The enumerator of a POSIX File Descriptor: a variation of enum_fd that
 -- supports RandomIO (seek requests)
--- TODO: modify this to support AudioStack instead of just IO.
 enum_fd_random :: ReadableChunk s el =>
                   Fd ->
                   AudioStreamState ->
-                  EnumeratorGM s el AudioStack a
+                  EnumeratorGM s el AudioMonad a
 enum_fd_random fd st iter =
  IM $ liftIO $ allocaBytes (fromIntegral buffer_size) (loop st (0,0) iter)
  where
@@ -44,9 +43,9 @@ enum_fd_random fd st iter =
   loop :: (ReadableChunk s el) =>
           AudioStreamState ->
           (FileOffset,Int) ->
-          IterateeG s el AudioStack a ->
+          IterateeG s el AudioMonad a ->
 	  Ptr el ->
-          IO (IterateeG s el AudioStack a)
+          IO (IterateeG s el AudioMonad a)
   loop _sst _pos iter'@Done{} _p = return iter'
   loop sst pos@(off,len) (Seek off' c) p |
     off <= off' && off' < off + fromIntegral len =	-- Seek within buffer p
@@ -73,7 +72,7 @@ enum_fd_random fd st iter =
 
 -- |Process a file using the given IterateeGM.  This function wraps
 -- enum_fd_random as a convenience.
-file_driver_rb :: ReadableChunk s el => IterateeGM s el AudioStack a ->
+file_driver_rb :: ReadableChunk s el => IterateeGM s el AudioMonad a ->
                FilePath ->
                IO (Either (String, a) a)
 file_driver_rb iter filepath = do

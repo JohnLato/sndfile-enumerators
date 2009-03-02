@@ -1,7 +1,7 @@
 module Sound.Iteratee.Base (
   AudioStreamState (..),
   WritableAudio (..),
-  AudioStack
+  AudioMonad
 )
 
 where
@@ -17,5 +17,5 @@ class WritableAudio a where
   emptyState :: a -> AudioStreamState
 
 -- | Audio monad stack (for writing files)
-type AudioStack = StateT AudioStreamState IO
+type AudioMonad = StateT AudioStreamState IO
 
