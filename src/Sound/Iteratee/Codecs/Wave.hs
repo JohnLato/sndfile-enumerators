@@ -195,6 +195,9 @@ read_value _dict offset _ 0 = do
   Iter.iterErr $ "Zero count in the entry of chunk at: " ++ show offset
   return Nothing
 
+-- TODO: In order to return a partial iteratee (rather than a full value),
+-- I can't use joinI because that sends EOF to the inner stream.  This may
+-- regain composability of iteratees for multiple files.
 read_value dict offset WAVE_DATA count = do
   fmt_m <- dict_read_last_format dict
   case fmt_m of
