@@ -21,6 +21,7 @@ where
 
 import Sound.Iteratee.Base
 import qualified Data.Iteratee.Base as Iter
+import Sound.Iteratee.Instances()
 import Data.Iteratee.Base
 import Data.Iteratee.Binary
 import qualified Data.StorableVector as Vec

@@ -10,7 +10,9 @@ module Sound.Iteratee.IO(
 where
 
 import Sound.Iteratee.Base
+
 import Data.Iteratee.Base
+import Data.Iteratee.Base.StreamChunk
 import Data.Iteratee.Binary()
 import Data.Iteratee.IO.Base
 import Data.Int
