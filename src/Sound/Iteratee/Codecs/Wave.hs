@@ -1,21 +1,29 @@
 {-# LANGUAGE RankNTypes #-}
 module Sound.Iteratee.Codecs.Wave (
+  -- * Types
+  -- ** Internal types
   WaveCodec (..),
   WAVEDE (..),
   WAVEDE_ENUM (..),
+  -- ** WAVE CHUNK types
   WAVE_CHUNK (..),
+  chunk_to_string,
   AudioFormat (..),
+  -- * Wave reading Iteratees
+  -- ** Basic wave reading
   wave_reader,
   read_riff,
   wave_chunk,
-  chunk_to_string,
+  -- ** WAVE Dictionary reading/processing functions
   dict_read_format,
   dict_read_first_format,
   dict_read_last_format,
   dict_read_first_data,
   dict_read_last_data,
   dict_read_data,
-  dict_process_data
+  dict_process_data,
+  -- * Writing functions
+  writeHeader
 )
 where
 
@@ -101,18 +109,6 @@ chunk_to_string :: WAVE_CHUNK -> String
 chunk_to_string WAVE_FMT = "fmt "
 chunk_to_string WAVE_DATA = "data"
 chunk_to_string (WAVE_OTHER str) = str
-
--- -----------------
--- throw this in here for now...
-data AudioFormat = AudioFormat {
-  numberOfChannels :: NumChannels, -- ^Number of channels in the audio data
-  sampleRate :: SampleRate, -- ^Sample rate of the audio
-  bitDepth :: BitDepth -- ^Bit depth of the audio data
-  } deriving (Show, Eq)
-
-type NumChannels = Integer
-type SampleRate = Integer
-type BitDepth = Integer
 
 -- convenience function to read a 4-byte ASCII string
 string_read4 :: Monad m => IterateeGM V Word8 m (Maybe String)
