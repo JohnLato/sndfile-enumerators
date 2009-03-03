@@ -66,8 +66,10 @@ data WAVEDE = WAVEDE{
   }
 
 data WAVEDE_ENUM =
-  WEN_BYTE  (forall a. EnumeratorGMM V Word8 V Word8 IO a)
-  | WEN_DUB (forall a. EnumeratorGMM V Word8 V Double IO a)
+  WEN_BYTE  (forall a m. (MonadIO m, Functor m) =>
+              EnumeratorGMM V Word8 V Word8 m a)
+  | WEN_DUB (forall a m. (MonadIO m, Functor m) =>
+              EnumeratorGMM V Word8 V Double m a)
 
 -- |Standard WAVE Chunks
 data WAVE_CHUNK = WAVE_FMT -- ^Format
@@ -124,7 +126,7 @@ string_read4 =
 -- -----------------
 
 -- |The library function to read the WAVE dictionary
-wave_reader :: IterateeGM V Word8 IO (Maybe WAVEDict)
+wave_reader :: (MonadIO m, Functor m) => IterateeGM V Word8 m (Maybe WAVEDict)
 wave_reader = do
   read_riff
   bindm (endian_read4 LSB) $ \tot_size -> do
@@ -133,7 +135,7 @@ wave_reader = do
     load_dict $ join_m chunks_m
 
 -- |Read the RIFF header of a file.
-read_riff :: IterateeGM V Word8 IO ()
+read_riff :: Monad m => IterateeGM V Word8 m ()
 read_riff = do
   s <- string_read4
   case s == Just "RIFF" of
@@ -141,7 +143,7 @@ read_riff = do
     False -> Iter.iterErr $ "Bad RIFF header: " ++ show s
 
 -- | Read the WAVE part of the RIFF header.
-read_riff_wave :: IterateeGM V Word8 IO ()
+read_riff_wave :: Monad m => IterateeGM V Word8 m ()
 read_riff_wave = do
   s <- string_read4
   case s == Just "WAVE" of
@@ -150,7 +152,9 @@ read_riff_wave = do
 
 -- | An internal function to find all the chunks.  It assumes that the
 -- stream is positioned to read the first chunk.
-find_chunks :: Int -> IterateeGM V Word8 IO (Maybe [(Int, WAVE_CHUNK, Int)])
+find_chunks :: Monad m =>
+               Int ->
+               IterateeGM V Word8 m (Maybe [(Int, WAVE_CHUNK, Int)])
 find_chunks n = find_chunks' 12 []
   where
   find_chunks' offset acc =
@@ -169,8 +173,9 @@ find_chunks n = find_chunks' 12 []
               find_chunks' newpos $
                (fromIntegral offset, chk, fromIntegral count') : acc
 
-load_dict :: [(Int, WAVE_CHUNK, Int)] ->
-               IterateeGM V Word8 IO (Maybe WAVEDict)
+load_dict :: (MonadIO m, Functor m) =>
+             [(Int, WAVE_CHUNK, Int)] ->
+             IterateeGM V Word8 m (Maybe WAVEDict)
 load_dict = foldl read_entry (return (Just IM.empty))
   where
   read_entry dictM (offset, typ, count) =
@@ -186,11 +191,12 @@ load_dict = foldl read_entry (return (Just IM.empty))
             (fromEnum typ) dict
         (Nothing, _) -> return (Just dict)
 
-read_value :: WAVEDict ->
+read_value :: (MonadIO m, Functor m) =>
+              WAVEDict ->
               Int -> -- Offset
               WAVE_CHUNK -> -- Chunk type
               Int -> -- Count
-              IterateeGM V Word8 IO (Maybe WAVEDE_ENUM)
+              IterateeGM V Word8 m (Maybe WAVEDE_ENUM)
 read_value _dict offset _ 0 = do
   Iter.iterErr $ "Zero count in the entry of chunk at: " ++ show offset
   return Nothing
@@ -233,18 +239,20 @@ unroll_8 = liftI $ Iter.Cont step
 -- TODO :: Use a rewrite rule to use unroll_8 when the return of
 -- unroll_n is Word8
 -- first parameter is sizeOf a
-unroll_n :: Storable a => Int -> IterateeGM V Word8 IO (Maybe (V a))
+unroll_n :: (Storable a, MonadIO m) =>
+            Int ->
+            IterateeGM V Word8 m (Maybe (V a))
 unroll_n wSize = liftI $ Iter.Cont step
   where
   step (Chunk vec)
     | Vec.null vec                    = unroll_n wSize
     | Vec.length vec < wSize          = liftI $ Iter.Cont $ step' vec
-    | Vec.length vec `rem` wSize == 0 = lift (convert_vec vec) >>= \v ->
+    | Vec.length vec `rem` wSize == 0 = liftIO (convert_vec vec) >>= \v ->
                                         liftI $ Iter.Done v (Chunk Vec.empty)
     | True    = let newLen = (Vec.length vec `div` wSize) * wSize
                     (h, t) = Vec.splitAt newLen vec
                 in
-                lift (convert_vec h) >>= \v -> liftI $ Iter.Done v (Chunk t)
+                liftIO (convert_vec h) >>= \v -> liftI $ Iter.Done v (Chunk t)
   step stream = liftI $ Iter.Done Nothing stream
   step' i (Chunk vec)
     | Vec.null vec                          = liftI $ Iter.Cont $ step' i
@@ -254,7 +262,7 @@ unroll_n wSize = liftI $ Iter.Cont step
                         newLen = (Vec.length vec' `div` wSize) * wSize
                         (h, t) = Vec.splitAt newLen vec'
                     in
-                    lift (convert_vec $ Vec.append i h) >>= \v ->
+                    liftIO (convert_vec $ Vec.append i h) >>= \v ->
                       liftI $ Iter.Done v (Chunk t)
   step' _i stream = liftI $ Iter.Done Nothing stream
   convert_vec vec = let (fp, off, len) = VB.toForeignPtr vec
@@ -311,7 +319,9 @@ swap_bytes wSize p = case wSize of
                                return ()
 
 -- |Convert Word8s to Doubles
-conv_func :: AudioFormat -> IterateeGM V Word8 IO (Maybe (V Double))
+conv_func :: (MonadIO m, Functor m) =>
+             AudioFormat ->
+             IterateeGM V Word8 m (Maybe (V Double))
 conv_func (AudioFormat _nc _sr 8) = (fmap . fmap . Vec.map)
   (normalize 8 . (fromIntegral :: Word8 -> Int8)) unroll_8
 conv_func (AudioFormat _nc _sr 16) = (fmap . fmap . Vec.map)
@@ -326,7 +336,7 @@ conv_func (AudioFormat _nc _sr 32) = (fmap . fmap . Vec.map)
 conv_func _ = Iter.iterErr "Invalid wave bit depth" >> return Nothing
 
 -- |An Iteratee to read a wave format chunk
-sWaveFormat :: IterateeGM V Word8 IO (Maybe AudioFormat)
+sWaveFormat :: Monad m => IterateeGM V Word8 m (Maybe AudioFormat)
 sWaveFormat =
   bindm (endian_read2 LSB) $ \f' -> --data format, 1==PCM
    bindm (endian_read2 LSB) $ \nc ->
@@ -343,7 +353,9 @@ sWaveFormat =
 -- functions to assist with reading from the dictionary
 
 -- |Read the first format chunk in the WAVE dictionary.
-dict_read_first_format :: WAVEDict -> IterateeGM V Word8 IO (Maybe AudioFormat)
+dict_read_first_format :: (MonadIO m, Functor m) =>
+                          WAVEDict ->
+                          IterateeGM V Word8 m (Maybe AudioFormat)
 dict_read_first_format dict = case IM.lookup (fromEnum WAVE_FMT) dict of
   Just [] -> return Nothing
   Just ((WAVEDE _ WAVE_FMT (WEN_BYTE enum)) : _xs) -> enum ==<< sWaveFormat
@@ -351,7 +363,9 @@ dict_read_first_format dict = case IM.lookup (fromEnum WAVE_FMT) dict of
 
 -- |Read the last fromat chunk from the WAVE dictionary.  This is useful
 -- when parsing all chunks in the dictionary.
-dict_read_last_format :: WAVEDict -> IterateeGM V Word8 IO (Maybe AudioFormat)
+dict_read_last_format :: (MonadIO m, Functor m) =>
+                         WAVEDict ->
+                         IterateeGM V Word8 m (Maybe AudioFormat)
 dict_read_last_format dict = case IM.lookup (fromEnum WAVE_FMT) dict of
   Just [] -> return Nothing
   Just xs -> let (WAVEDE _ WAVE_FMT (WEN_BYTE enum)) = last xs in
@@ -359,16 +373,19 @@ dict_read_last_format dict = case IM.lookup (fromEnum WAVE_FMT) dict of
   _ -> return Nothing
 
 -- |Read the specified format chunk from the WAVE dictionary
-dict_read_format :: Int -> --Index in the format chunk list to read
+dict_read_format :: (MonadIO m, Functor m) =>
+                    Int -> --Index in the format chunk list to read
                     WAVEDict -> --Dictionary
-                    IterateeGM V Word8 IO (Maybe AudioFormat)
+                    IterateeGM V Word8 m (Maybe AudioFormat)
 dict_read_format ix dict = case IM.lookup (fromEnum WAVE_FMT) dict of
   Just xs -> let (WAVEDE _ WAVE_FMT (WEN_BYTE enum)) = (!!) xs ix in
     enum ==<< sWaveFormat
   _ -> return Nothing
 
 -- |Read the first data chunk in the WAVE dictionary.
-dict_read_first_data :: WAVEDict -> IterateeGM V Word8 IO (Maybe [Double])
+dict_read_first_data :: (MonadIO m, Functor m) =>
+                        WAVEDict ->
+                        IterateeGM V Word8 m (Maybe [Double])
 dict_read_first_data dict = case IM.lookup (fromEnum WAVE_DATA) dict of
   Just [] -> return Nothing
   Just ((WAVEDE _ WAVE_DATA (WEN_DUB enum)) : _xs) -> do
@@ -377,7 +394,9 @@ dict_read_first_data dict = case IM.lookup (fromEnum WAVE_DATA) dict of
   _ -> return Nothing
 
 -- |Read the last data chunk in the WAVE dictionary.
-dict_read_last_data :: WAVEDict -> IterateeGM V Word8 IO (Maybe [Double])
+dict_read_last_data :: (MonadIO m, Functor m) =>
+                       WAVEDict ->
+                       IterateeGM V Word8 m (Maybe [Double])
 dict_read_last_data dict = case IM.lookup (fromEnum WAVE_DATA) dict of
   Just [] -> return Nothing
   Just xs -> let (WAVEDE _ WAVE_DATA (WEN_DUB enum)) = last xs in do
@@ -386,9 +405,10 @@ dict_read_last_data dict = case IM.lookup (fromEnum WAVE_DATA) dict of
   _ -> return Nothing
 
 -- |Read the specified data chunk from the WAVE dictionary.
-dict_read_data :: Int -> --Index in the data chunk list to read
+dict_read_data :: (MonadIO m, Functor m) =>
+                  Int -> --Index in the data chunk list to read
                   WAVEDict -> --Dictionary
-                  IterateeGM V Word8 IO (Maybe [Double])
+                  IterateeGM V Word8 m (Maybe [Double])
 dict_read_data ix dict = case IM.lookup (fromEnum WAVE_DATA) dict of
   Just xs -> let (WAVEDE _ WAVE_DATA (WEN_DUB enum)) = (!!) xs ix in do
     e <- enum ==<< stream2list
@@ -397,10 +417,11 @@ dict_read_data ix dict = case IM.lookup (fromEnum WAVE_DATA) dict of
 
 -- |Read the specified data chunk from the dictionary, applying the
 -- data to the specified IterateeGM.
-dict_process_data :: Int -> -- Index in the data chunk list to read
+dict_process_data :: (MonadIO m, Functor m) =>
+                     Int -> -- Index in the data chunk list to read
                      WAVEDict -> -- Dictionary
-                     IterateeGM V Double IO a ->
-                     IterateeGM V Word8 IO (Maybe a)
+                     IterateeGM V Double m a ->
+                     IterateeGM V Word8 m (Maybe a)
 dict_process_data ix dict iter = case IM.lookup (fromEnum WAVE_DATA) dict of
   Just xs -> let (WAVEDE _ WAVE_DATA (WEN_DUB enum)) = (!!) xs ix in do
     e <- enum ==<< iter
