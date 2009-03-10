@@ -4,6 +4,8 @@ module Sound.Iteratee.Base (
   AudioStreamState (..),
   WritableAudio (..),
   AudioMonad,
+  -- *** Functions to work with AudioMonad
+  module Control.Monad.State,
   -- ** Audio Format types
   AudioFormat (..),
   NumChannels,
@@ -14,14 +16,17 @@ module Sound.Iteratee.Base (
 where
 
 import Control.Monad.State
+import System.IO
 
 -- |Information about the AudioStream
 data AudioStreamState =
-  WaveState  Integer Integer -- ^ Total bytes written, data chunklen offset
+  WaveState !(Maybe Handle) !(Maybe AudioFormat) !Integer !Integer !Integer -- ^ Handle, format, Total bytes written, data bytes written, data chunklen offset
   | NoState
+  deriving (Eq, Show)
 
 class WritableAudio a where
   emptyState :: a -> AudioStreamState
+  initState ::  a -> Handle -> AudioStreamState
 
 -- | Audio monad stack (for writing files)
 type AudioMonad = StateT AudioStreamState IO

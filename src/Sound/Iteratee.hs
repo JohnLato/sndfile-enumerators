@@ -1,8 +1,12 @@
 module Sound.Iteratee (
-  module Data.Iteratee.Codecs.Wave
+  module Sound.Iteratee.Base,
+  module Sound.Iteratee.Writer,
+  module Sound.Iteratee.Codecs.Wave
 )
 
 where
 
-import Data.Iteratee.Codecs.Wave
+import Sound.Iteratee.Base
+import Sound.Iteratee.Codecs.Wave
+import Sound.Iteratee.Writer
 

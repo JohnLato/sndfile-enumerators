@@ -16,7 +16,7 @@ category:       Codec, Sound
 build-type:     Simple
 cabal-version:  >= 1.2
 tested-with:    GHC == 6.10.1, GHC == 6.8.3, GHC == 6.6.1
-extra-source-files: README, examples
+extra-source-files: README, examples, examples/wave_reader.hs, examples/wave_writer.hs
 
 flag splitBase
   description: Choose the new split-up base package.
@@ -28,7 +28,7 @@ Library
    build-depends:       base >= 3, base < 5
  else
    build-depends:       base < 3
- build-depends:         haskell98, binary, storablevector, containers, mtl, iteratee, unix
+ build-depends:         haskell98, binary, storablevector, containers, mtl, iteratee, unix, bytestring, binary
  exposed-modules:       Sound.Iteratee
                         Sound.Iteratee.Base
                         Sound.Iteratee.Codecs
@@ -37,3 +37,5 @@ Library
                         Sound.Iteratee.IO
                         Sound.Iteratee.Instances
                         Sound.Iteratee.Instances.StorableVector
+                        Sound.Iteratee.Writer
+ other-modules:         Sound.Iteratee.Codecs.WaveWriter

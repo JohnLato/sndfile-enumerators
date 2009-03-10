@@ -8,7 +8,6 @@ module Sound.Iteratee.Codecs.Wave (
   -- ** WAVE CHUNK types
   WAVE_CHUNK (..),
   chunk_to_string,
-  AudioFormat (..),
   -- * Wave reading Iteratees
   -- ** Basic wave reading
   wave_reader,
@@ -22,11 +21,20 @@ module Sound.Iteratee.Codecs.Wave (
   dict_read_last_data,
   dict_read_data,
   dict_process_data,
-  -- * Writing functions
-  writeHeader
+  -- * Wave writing files
+  -- ** Writing iteratees
+  writeWave,
+  -- ** Primitive wave writing functions
+  openWave,
+  closeWave,
+  runWaveAM,
+  writeFormat,
+  writeDataHeader,
+  writeDataChunk
 )
 where
 
+import Sound.Iteratee.Codecs.WaveWriter
 import Sound.Iteratee.Base
 import qualified Data.Iteratee.Base as Iter
 import Sound.Iteratee.Instances()
@@ -45,6 +53,7 @@ import Data.Word
 import Data.Bits (shiftL)
 import qualified Data.IntMap as IM
 import System.IO.Unsafe (unsafePerformIO)
+import System.IO
 
 -- =====================================================
 -- WAVE libary code
@@ -56,12 +65,6 @@ type V    = Vec.Vector
 -- determine host endian-ness
 be :: Bool
 be = (==1) $ unsafePerformIO $ FMU.with (1 :: Word16) (\p -> peekByteOff p 1 :: IO Word8)
-
--- |Data type to specify WAVE-formatted data.
-data WaveCodec = WaveCodec
-
-instance WritableAudio WaveCodec where
-  emptyState WaveCodec = WaveState 0 0
 
 -- |A WAVE directory is a list associating WAVE chunks with
 -- a record WAVEDE
@@ -423,6 +426,7 @@ dict_process_data ix dict iter = case IM.lookup (fromEnum WAVE_DATA) dict of
     e <- enum ==<< iter
     return $ Just e
   _ -> return Nothing
+
 
 -- ---------------------
 -- convenience functions
