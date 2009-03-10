@@ -57,6 +57,7 @@ writeWave fp af = do
   loop
   lift $ closeWave
   lift $ showState "after data: "
+  lift $ put NoState
   where
   loop = liftI $ Cont step
   step (Chunk vec) | Vec.null vec = loop

@@ -20,7 +20,8 @@ main = do
   case args of
     fname:oname:xs -> do
       putStrLn $ "Reading file: " ++ fname
-      fileDriverAudio (wave_reader >>= writer oname) fname
+      --fileDriverAudio (wave_reader >>= writer oname) fname
+      fileDriverAudio (writer2 oname) fname
       return ()
     _ -> putStrLn "Usage: wave_writer ReadFile WriteFile"
 
@@ -40,10 +41,8 @@ writer fp (Just dict) = do
         fmtm
   return ()
 
-writer2 :: FilePath -> Maybe (IM.IntMap [WAVEDE]) -> IterateeGM V Word8 AudioMonad ()
-writer2 fp (Just dict) = do
-  fmtm <- dict_read_first_format dict
-  maybe (error "No format")
-        (\fmt -> (mapStream fromIntegral ==<< (enumPure1Chunk SV.empty ==<< writeWave fp fmt)))
-        fmtm
+writer2 :: FilePath -> IterateeGM V Double AudioMonad ()
+writer2 fp = do
+  let fmt = AudioFormat 2 44100 16
+  enumPure1Chunk SV.empty ==<< writeWave fp fmt
   return ()
