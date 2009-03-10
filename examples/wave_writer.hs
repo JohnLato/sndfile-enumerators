@@ -20,8 +20,8 @@ main = do
   case args of
     fname:oname:xs -> do
       putStrLn $ "Reading file: " ++ fname
-      --fileDriverAudio (wave_reader >>= writer oname) fname
-      fileDriverAudio (writer2 oname) fname
+      fileDriverAudio (wave_reader >>= writer oname) fname
+      --runAudioMonad $ unIM $ (writer2 oname)
       return ()
     _ -> putStrLn "Usage: wave_writer ReadFile WriteFile"
 
@@ -41,6 +41,7 @@ writer fp (Just dict) = do
         fmtm
   return ()
 
+-- |Write an empty wave file to the specified file
 writer2 :: FilePath -> IterateeGM V Double AudioMonad ()
 writer2 fp = do
   let fmt = AudioFormat 2 44100 16

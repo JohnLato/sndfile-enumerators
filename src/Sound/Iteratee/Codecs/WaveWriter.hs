@@ -49,21 +49,16 @@ writeWave :: FilePath ->
              IterateeGM Vec.Vector Double AudioMonad ()
 writeWave fp af = do
   lift $ openWave fp
-  lift $ showState "after open: "
   lift $ writeFormat af
-  lift $ showState "after write format: "
   lift $ writeDataHeader
-  lift $ showState "after write data header: "
   loop
   lift $ closeWave
-  lift $ showState "after data: "
   lift $ put NoState
   where
   loop = liftI $ Cont step
   step (Chunk vec) | Vec.null vec = loop
   step (Chunk vec)                = lift (writeDataChunk vec) >> loop
   step stream                     = liftI $ Done () stream
-  showState header = get >>= (\s -> liftIO $ putStrLn $ header ++ (show s))
 
 -- |Open a wave file for writing
 openWave :: FilePath -> AudioMonad ()
@@ -103,10 +98,9 @@ writeDataChunk vec = do
   as <- get
   case as of
     WaveState (Just h) (Just af) i i' off -> do
-      let len = getLength af
+      let len = fromIntegral $ getLength af
       liftIO $ putVec af h vec
-      let len' = fromIntegral len
-      put $ WaveState (Just h) (Just af) (i + len') (i' + len') off
+      put $ WaveState (Just h) (Just af) (i + len) (i' + len) off
     WaveState Nothing  _       _ _ _  -> error "Can't write: no file opened"
     WaveState _        Nothing _ _ _  -> error "No format specified"
     _                                 -> error "Can't write: not a WAVE file"
@@ -117,7 +111,7 @@ writeDataChunk vec = do
     24 -> undefined -- Vec.hPut h (convertVector af vec' :: Vec.Vector Word24)
     32 -> Vec.hPut h (convertVector af vec' :: Vec.Vector Word32)
     x  -> error $ "Cannot write wave file: unsupported bit depth " ++ (show x)
-  getLength af = fromIntegral (bitDepth af) * Vec.length vec
+  getLength af = fromIntegral (bitDepth af `div` 8) * Vec.length vec
 
 closeWave :: AudioMonad ()
 closeWave = do
