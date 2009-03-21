@@ -76,6 +76,9 @@ data WAVEDE = WAVEDE{
   wavede_enum :: WAVEDE_ENUM -- ^enumerator to get values of chunk
   }
 
+instance Show WAVEDE where
+  show a = "Type: " ++ (show $ wavede_type a) ++ " :: Length: " ++ (show $ wavede_count a)
+
 data WAVEDE_ENUM =
   WEN_BYTE  (forall a m. (MonadIO m, Functor m) =>
               EnumeratorGMM V Word8 V Word8 m a)
