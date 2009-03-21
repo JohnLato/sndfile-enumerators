@@ -238,9 +238,9 @@ unroll_8 = liftI $ Iter.Cont step
     | True         = liftI $ Iter.Done (Just vec) (Chunk Vec.empty)
   step stream      = liftI $ Iter.Done Nothing stream
 
--- TODO :: Use a rewrite rule to use unroll_8 when the return of
--- unroll_n is Word8
--- first parameter is sizeOf a
+-- When unrolling to a Word8, use the specialized unroll_8 function
+-- because we actually don't need to do anything
+{-# RULES "unroll_8" forall n. unroll_n n = unroll_8 #-}
 unroll_n :: (Storable a, MonadIO m) =>
             Int ->
             IterateeGM V Word8 m (Maybe (V a))
