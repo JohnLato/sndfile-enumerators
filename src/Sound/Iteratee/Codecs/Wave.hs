@@ -161,8 +161,8 @@ find_chunks n = find_chunks' 12 []
   find_chunks' offset acc = do
     mpad <- Iter.peek
     if (offset `mod` 2 == 1) && (mpad == Just 0)
-      then find_chunks'2 offset acc
-      else Iter.drop 1 >> find_chunks'2 offset acc
+      then Iter.drop 1 >> find_chunks'2 offset acc
+      else find_chunks'2 offset acc
   find_chunks'2 offset acc =
     bindm string_read4 $ \typ -> do
       count <- endian_read4 LSB
