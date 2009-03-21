@@ -52,7 +52,6 @@ import Data.Int
 import Data.Word
 import Data.Bits (shiftL)
 import qualified Data.IntMap as IM
-import System.IO.Unsafe (unsafePerformIO)
 import System.IO
 
 -- =====================================================
@@ -63,8 +62,8 @@ import System.IO
 type V    = Vec.Vector
 
 -- determine host endian-ness
-be :: Bool
-be = (==1) $ unsafePerformIO $ FMU.with (1 :: Word16) (\p -> peekByteOff p 1 :: IO Word8)
+be :: IO Bool
+be = fmap (==1) $ FMU.with (1 :: Word16) (\p -> peekByteOff p 1 :: IO Word8)
 
 -- |A WAVE directory is a list associating WAVE chunks with
 -- a record WAVEDE
@@ -283,18 +282,20 @@ unroll_n wSize = liftI $ Iter.Cont step
                     return $ Just v'
 
 host_to_le :: Storable a => V a -> IO (V a)
-host_to_le vec = case be of
-  True -> let
-            (fp, off, len) = VB.toForeignPtr vec
-            wSize = sizeOf $ Vec.head vec
-          in
-          loop wSize fp len off
-  False -> return vec
-  where
-    loop _wSize _fp 0 _off = return vec
-    loop wSize fp len off  = do
-      FFP.withForeignPtr fp (\p -> swap_bytes wSize (p `FP.plusPtr` off))
-      loop wSize fp (len - 1) (off + 1)
+host_to_le vec = do
+  be' <- be
+  case be' of
+    True -> let
+              (fp, off, len) = VB.toForeignPtr vec
+              wSize = sizeOf $ Vec.head vec
+            in
+            loop wSize fp len off
+    False -> return vec
+    where
+      loop _wSize _fp 0 _off = return vec
+      loop wSize fp len off  = do
+        FFP.withForeignPtr fp (\p -> swap_bytes wSize (p `FP.plusPtr` off))
+        loop wSize fp (len - 1) (off + 1)
 
 swap_bytes :: Int -> FP.Ptr a -> IO ()
 swap_bytes wSize p = case wSize of
