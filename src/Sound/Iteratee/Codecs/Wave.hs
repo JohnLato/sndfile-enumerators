@@ -47,6 +47,7 @@ import qualified Foreign.ForeignPtr as FFP
 import Foreign.Storable
 import qualified Foreign.Marshal.Utils as FMU
 import Control.Monad.Trans
+import Control.Parallel.Strategies
 import Data.Char (chr)
 import Data.Int
 import Data.Word
@@ -214,10 +215,10 @@ read_value dict offset WAVE_DATA count = do
   fmt_m <- dict_read_last_format dict
   case fmt_m of
     Just fmt ->
-      return . Just . WEN_DUB $ \iter_dub -> do
+      (return . Just . WEN_DUB $ \iter_dub -> do
         Iter.seek (8 + fromIntegral offset)
         let iter = convStream (conv_func fmt) iter_dub
-        joinI $ joinI $ Iter.takeR count ==<< iter
+        joinI $ joinI $ Iter.takeR count ==<< iter) `demanding` rnf fmt
     Nothing -> do
       Iter.iterErr $ "No valid format for data chunk at: " ++ show offset
       return Nothing

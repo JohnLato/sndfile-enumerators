@@ -16,6 +16,7 @@ module Sound.Iteratee.Base (
 where
 
 import Control.Monad.State
+import Control.Parallel.Strategies
 import System.IO
 
 -- |Information about the AudioStream
@@ -37,6 +38,9 @@ data AudioFormat = AudioFormat {
   sampleRate :: SampleRate, -- ^Sample rate of the audio data
   bitDepth :: BitDepth -- ^Bit depth of the audio data
   } deriving (Show, Eq)
+
+instance NFData AudioFormat where
+  rnf (AudioFormat nc sr bd) = rnf nc >| rnf sr >| rnf bd
 
 type NumChannels = Integer
 type SampleRate  = Integer
