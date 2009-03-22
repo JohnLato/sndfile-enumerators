@@ -50,7 +50,9 @@ import Control.Monad.Trans
 import Control.Parallel.Strategies
 import Data.Char (chr)
 import Data.Int
+import Data.Int.Int24
 import Data.Word
+import Data.Word.Word24
 import Data.Bits (shiftL)
 import qualified Data.IntMap as IM
 import System.IO
@@ -253,10 +255,13 @@ unroll_n wSize = liftI $ Iter.Cont step
   where
   step (Chunk vec)
     | Vec.null vec                    = unroll_n wSize
+  step (Chunk vec)
     | Vec.length vec < wSize          = liftI $ Iter.Cont $ step' vec
+  step (Chunk vec)
     | Vec.length vec `rem` wSize == 0 = liftIO (convert_vec vec) >>= \v ->
                                         liftI $ Iter.Done v (Chunk Vec.empty)
-    | True    = let newLen = (Vec.length vec `div` wSize) * wSize
+  step (Chunk vec)                    =
+                let newLen = (Vec.length vec `div` wSize) * wSize
                     (h, t) = Vec.splitAt newLen vec
                 in
                 liftIO (convert_vec h) >>= \v -> liftI $ Iter.Done v (Chunk t)
@@ -337,8 +342,8 @@ conv_func (AudioFormat _nc _sr 16) = (fmap . fmap . Vec.map)
   (normalize 16 . (fromIntegral :: Word16 -> Int16))
   (unroll_n $ sizeOf (undefined :: Word16))
 conv_func (AudioFormat _nc _sr 24) = (fmap . fmap . Vec.map)
-  (normalize 24 . (fromIntegral :: Word32 -> Int32))
-  (unroll_n 3)
+  (normalize 24 . (fromIntegral :: Word24 -> Int24))
+  (unroll_n $ sizeOf (undefined :: Word24))
 conv_func (AudioFormat _nc _sr 32) = (fmap . fmap . Vec.map)
   (normalize 32 . (fromIntegral :: Word32 -> Int32))
   (unroll_n $ sizeOf (undefined :: Word32))

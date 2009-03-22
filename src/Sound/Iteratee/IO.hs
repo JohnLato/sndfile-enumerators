@@ -2,7 +2,7 @@
 
 module Sound.Iteratee.IO(
   -- * File enumerators
-  enum_fd_random
+  enumRandom
 )
 
 where
@@ -15,23 +15,24 @@ import Data.Iteratee.Binary()
 import Data.Iteratee.IO.Base
 import Data.Int
 import Control.Monad.State
+import Control.Exception.Extensible
 
-import System.Posix hiding (FileOffset)
 import Foreign.Ptr
 import Foreign.Marshal.Alloc
 
-import System.IO (SeekMode(..))
+import System.IO
 
 
 -- ------------------------------------------------------------------------
 -- Binary Random IO enumerators
 
--- |The enumerator of a POSIX File Descriptor: a variation of enum_fd that
--- supports RandomIO (seek requests)
-enum_fd_random :: ReadableChunk s el =>
-                  Fd ->
+-- |The enumerator of a Handle: a variation of enumHandle that
+-- supports RandomIO (seek requests).
+-- this version uses handles for compatibility
+enumRandom :: ReadableChunk s el =>
+                  Handle ->
                   EnumeratorGM s el AudioMonad a
-enum_fd_random fd iter = lift get >>= \st ->
+enumRandom h iter = lift get >>= \st ->
  IM $ liftIO $ allocaBytes (fromIntegral buffer_size) (loop st (0,0) iter)
  where
   buffer_size = 4096
@@ -52,13 +53,14 @@ enum_fd_random fd iter = lift get >>= \st ->
     (im, s) <- runStateT (unIM $ c (Chunk str)) sst
     loop s pos im p
   loop sst _pos iter'@(Seek off c) p = do -- Seek outside the buffer
-   off' <- myfdSeek fd AbsoluteSeek (fromIntegral off)
+   off' <- (try $ hSeek h AbsoluteSeek
+             (fromIntegral off)) :: IO (Either SomeException ())
    case off' of
     Left _errno -> evalStateT (unIM $ enumErr "IO error" iter') sst
-    Right off''  -> loop sst (off'',0) (Cont c) p
+    Right _     -> loop sst (off, 0) (Cont c) p
   loop _sst (off,len) _iter' _p | off `seq` len `seq` False = undefined
   loop sst (off,len) iter'@(Cont step) p = do
-   n <- myfdRead fd (castPtr p) buffer_size
+   n <- (try $ hGetBuf h p buffer_size) :: IO (Either SomeException Int)
    case n of
     Left _errno -> evalStateT (unIM $ step (Error "IO error")) sst
     Right 0 -> return iter'

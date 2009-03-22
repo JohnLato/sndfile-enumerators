@@ -15,10 +15,10 @@ import Sound.Iteratee.Codecs
 import Data.Iteratee
 import Data.Iteratee.Base.StreamChunk
 
-import System.Posix
+import System.IO
 
 -- |Process a file using the given IterateeGM.  This function wraps
--- enum_fd_random as a convenience.
+-- enumRandom as a convenience.
 
 runAudioMonad :: AudioMonad a -> IO a
 runAudioMonad am = do
@@ -31,9 +31,9 @@ fileDriverAudio :: ReadableChunk s el => IterateeGM s el AudioMonad a ->
                FilePath ->
                IO (Either (String, a) a)
 fileDriverAudio iter filepath = do
-  fd <- openFd filepath ReadOnly Nothing defaultFileFlags
-  result <- runAudioMonad (unIM $ (enum_fd_random fd >. enumEof) ==<< iter)
-  closeFd fd
+  h <- openBinaryFile filepath ReadMode
+  result <- runAudioMonad (unIM $ (enumRandom h >. enumEof) ==<< iter)
+  hClose h
   print_res result
  where
   print_res (Done a (Error err)) = return $ Left (err, a)
