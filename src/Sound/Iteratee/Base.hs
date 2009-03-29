@@ -5,7 +5,7 @@ module Sound.Iteratee.Base (
   WritableAudio (..),
   AudioMonad,
   -- *** Functions to work with AudioMonad
-  module Control.Monad.State,
+  module Control.Monad.Trans.State,
   -- ** Audio Format types
   AudioFormat (..),
   NumChannels,
@@ -15,7 +15,7 @@ module Sound.Iteratee.Base (
 
 where
 
-import Control.Monad.State
+import Control.Monad.Trans.State
 import Control.Parallel.Strategies
 import System.IO
 

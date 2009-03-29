@@ -14,7 +14,8 @@ import Data.Iteratee.Base.StreamChunk
 import Data.Iteratee.Binary()
 import Data.Iteratee.IO.Base
 import Data.Int
-import Control.Monad.State
+import Control.Monad.Trans
+import Control.Monad.Trans.State
 import Control.Exception.Extensible
 
 import Foreign.Ptr

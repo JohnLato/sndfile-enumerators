@@ -28,7 +28,7 @@ Library
    build-depends:       base >= 3, base < 5
  else
    build-depends:       base < 3
- build-depends:         haskell98, binary, storablevector, containers, mtl, iteratee >= 0.1.1 && < 0.2, bytestring, binary, extensible-exceptions >= 0.1 && < 0.2, parallel >= 1.1 && < 2
+ build-depends:         haskell98, binary, storablevector, containers, transformers >= 0.1.4 && < 0.2, iteratee >= 0.1.1 && < 0.2, bytestring, binary, extensible-exceptions >= 0.1 && < 0.2, parallel >= 1.1 && < 2
  exposed-modules:       Sound.Iteratee
                         Sound.Iteratee.Base
                         Sound.Iteratee.Codecs
