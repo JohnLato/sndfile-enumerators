@@ -16,6 +16,7 @@ where
 
 import Sound.Iteratee.Base
 import Sound.Iteratee.Instances()
+import Data.Word.Word24
 import Data.Iteratee.Base
 import qualified Data.StorableVector as Vec
 import qualified Data.StorableVector.Base as VB
@@ -108,7 +109,7 @@ writeDataChunk vec = do
   putVec af h vec' = case bitDepth af of
     8  -> Vec.hPut h (convertVector af vec' :: Vec.Vector Word8)
     16 -> Vec.hPut h (convertVector af vec' :: Vec.Vector Word16)
-    24 -> undefined -- Vec.hPut h (convertVector af vec' :: Vec.Vector Word24)
+    24 -> Vec.hPut h (convertVector af vec' :: Vec.Vector Word24)
     32 -> Vec.hPut h (convertVector af vec' :: Vec.Vector Word32)
     x  -> error $ "Cannot write wave file: unsupported bit depth " ++ (show x)
   getLength af = fromIntegral (bitDepth af `div` 8) * Vec.length vec
