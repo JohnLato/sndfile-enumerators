@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleInstances, MultiParamTypeClasses, FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances, MultiParamTypeClasses, FlexibleContexts, UndecidableInstances #-}
 
 module Sound.Iteratee.Instances.StorableVector (
   vmap
@@ -10,12 +10,14 @@ import qualified Data.Iteratee.Base.StreamChunk as SC
 import qualified Data.StorableVector as SV
 import qualified Data.StorableVector.Base as SVBase
 import Data.Monoid
+import qualified Data.ListLike as LL
 import Foreign.Storable
 import Foreign.ForeignPtr
 
-instance (Storable el) => SC.StreamChunk SV.Vector el where
+instance (Storable el) => LL.ListLike (SV.Vector el) el where
   length    = SV.length
   null      = SV.null
+  singleton = SV.singleton
   cons      = SV.cons
   head      = SV.head
   tail      = SV.tail
@@ -24,6 +26,13 @@ instance (Storable el) => SC.StreamChunk SV.Vector el where
   dropWhile = SV.dropWhile
   fromList  = SV.pack
   toList    = SV.unpack
+
+instance (Storable el) => LL.FoldableLL (SV.Vector el) el where
+  foldl     = SV.foldl
+  foldr     = SV.foldr
+
+instance (Storable el, LL.ListLike (SV.Vector el) el) =>
+         SC.StreamChunk SV.Vector el where
   cMap      = vmap
 
 vmap :: (SC.StreamChunk s' el', Storable el) =>
