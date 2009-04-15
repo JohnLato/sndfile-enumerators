@@ -274,7 +274,7 @@ unroll_n wSize = liftI $ Iter.Cont step
                         newLen = (Vec.length vec' `div` wSize) * wSize
                         (h, t) = Vec.splitAt newLen vec'
                     in
-                    liftIO (convert_vec $ Vec.append i h) >>= \v ->
+                    liftIO (convert_vec h) >>= \v ->
                       liftI $ Iter.Done v (Chunk t)
   step' _i stream = liftI $ Iter.Done Nothing stream
   convert_vec vec = let (fp, off, len) = VB.toForeignPtr vec
