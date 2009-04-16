@@ -21,6 +21,10 @@ module Sound.Iteratee.Codecs.Wave (
   dict_read_last_data,
   dict_read_data,
   dict_process_data,
+  -- ** Information on WAVE chunks
+  dict_get_length_raw,
+  dict_get_data_length,
+  dict_sound_info,
   -- * Wave writing files
   -- ** Writing iteratees
   writeWave,
@@ -442,6 +446,36 @@ dict_process_data ix dict iter = case IM.lookup (fromEnum WAVE_DATA) dict of
     return $ Just e
   _ -> return Nothing
 
+-- | Get the length of data in a dictionary chunk, in bytes.
+dict_get_length_raw :: WAVE_CHUNK -> -- type of chunk to read
+                       Int ->        -- index in the chunk list to read
+                       WAVEDict ->   -- dictionary
+                       Maybe Integer -- length of chunk in bytes
+dict_get_length_raw wc ix dict = IM.lookup (fromEnum wc) dict >>= \xs ->
+  let (WAVEDE off _ _) = (!!) xs ix in Just (fromIntegral off)
+
+-- | Get the length of a data chunk, in samples.
+dict_get_data_length :: AudioFormat ->
+                        Int ->
+                        WAVEDict ->
+                        Maybe Integer
+dict_get_data_length af ix dict = IM.lookup (fromEnum WAVE_DATA) dict >>= \xs ->
+  let (WAVEDE off _ _) = (!!) xs ix in Just ((fromIntegral off) `div` bd)
+  where
+  bd = bitDepth af `div` 8
+
+-- ---------------------
+-- combination/utility functions
+
+-- |Get the AudioFormat and data length from a file
+dict_sound_info :: (MonadIO m, Functor m) =>
+                   Maybe WAVEDict ->
+                   IterateeGM V Word8 m (Maybe (AudioFormat, Integer))
+dict_sound_info Nothing     = return Nothing
+dict_sound_info (Just dict) = do
+  fmtm <- dict_read_first_format dict
+  return $ fmtm >>=
+           (\fmt -> fmap (\l -> (fmt, l)) $ dict_get_data_length fmt 0 dict)
 
 -- ---------------------
 -- convenience functions
