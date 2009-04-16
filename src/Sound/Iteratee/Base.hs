@@ -10,7 +10,8 @@ module Sound.Iteratee.Base (
   AudioFormat (..),
   NumChannels,
   SampleRate,
-  BitDepth
+  BitDepth,
+  FrameCount
 )
 
 where
@@ -45,3 +46,5 @@ instance NFData AudioFormat where
 type NumChannels = Integer
 type SampleRate  = Integer
 type BitDepth    = Integer
+type FrameCount  = Integer
+
