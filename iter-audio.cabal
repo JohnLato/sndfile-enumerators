@@ -34,6 +34,7 @@ Library
                         Sound.Iteratee.Codecs
                         Sound.Iteratee.Codecs.SupportedFormats
                         Sound.Iteratee.Codecs.Wave
+                        Sound.Iteratee.Codecs.Raw
                         Sound.Iteratee.IO
                         Sound.Iteratee.Instances
                         Sound.Iteratee.Instances.StorableVector
@@ -41,3 +42,4 @@ Library
                         Data.Int.Int24
                         Data.Word.Word24
  other-modules:         Sound.Iteratee.Codecs.WaveWriter
+                        Sound.Iteratee.Codecs.Common

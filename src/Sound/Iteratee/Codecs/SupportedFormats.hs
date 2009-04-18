@@ -6,5 +6,6 @@ module Sound.Iteratee.Codecs.SupportedFormats (
 where
 
 -- | An enumeration of all file types supported for reading and writing.
-data SupportedFileFormat = Wave
+data SupportedFileFormat = Raw
+                           | Wave
                            deriving (Show, Enum, Bounded, Eq)
