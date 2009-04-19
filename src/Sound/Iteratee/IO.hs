@@ -2,7 +2,7 @@
 
 module Sound.Iteratee.IO(
   -- * File enumerators
-  enumRandom
+  enumAudioFile
 )
 
 where
@@ -30,10 +30,10 @@ import System.IO
 -- |The enumerator of a Handle: a variation of enumHandle that
 -- supports RandomIO (seek requests).
 -- this version uses handles for compatibility
-enumRandom :: ReadableChunk s el =>
+enumAudioFile :: ReadableChunk s el =>
                   Handle ->
                   EnumeratorGM s el AudioMonad a
-enumRandom h iter = lift get >>= \st ->
+enumAudioFile h iter = lift get >>= \st ->
  IM $ liftIO $ allocaBytes (fromIntegral buffer_size) (loop st (0,0) iter)
  where
   buffer_size = 4096

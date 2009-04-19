@@ -18,7 +18,7 @@ import Data.Iteratee.Base.StreamChunk
 import System.IO
 
 -- |Process a file using the given IterateeGM.  This function wraps
--- enumRandom as a convenience.
+-- enumAudioFile as a convenience.
 
 runAudioMonad :: AudioMonad a -> IO a
 runAudioMonad am = do
@@ -32,7 +32,7 @@ fileDriverAudio :: ReadableChunk s el => IterateeGM s el AudioMonad a ->
                IO (Either (String, a) a)
 fileDriverAudio iter filepath = do
   h <- openBinaryFile filepath ReadMode
-  result <- runAudioMonad (unIM $ (enumRandom h >. enumEof) ==<< iter)
+  result <- runAudioMonad (unIM $ (enumAudioFile h >. enumEof) ==<< iter)
   hClose h
   print_res result
  where
