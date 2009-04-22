@@ -51,9 +51,9 @@ writeWave :: FilePath ->
 writeWave fp af = do
   lift $ openWave fp
   lift $ writeFormat af
-  lift $ writeDataHeader
+  lift writeDataHeader
   loop
-  lift $ closeWave
+  lift closeWave
   lift $ put NoState
   where
   loop = liftI $ Cont step
@@ -111,7 +111,7 @@ writeDataChunk vec = do
     16 -> Vec.hPut h (convertVector af vec' :: Vec.Vector Word16)
     24 -> Vec.hPut h (convertVector af vec' :: Vec.Vector Word24)
     32 -> Vec.hPut h (convertVector af vec' :: Vec.Vector Word32)
-    x  -> error $ "Cannot write wave file: unsupported bit depth " ++ (show x)
+    x  -> error $ "Cannot write wave file: unsupported bit depth " ++ show x
   getLength af = fromIntegral (bitDepth af `div` 8) * Vec.length vec
 
 closeWave :: AudioMonad ()
@@ -163,8 +163,8 @@ convertVector :: (Integral a, Storable a) =>
                  AudioFormat ->
                  Vec.Vector Double ->
                  Vec.Vector a
-convertVector (AudioFormat _nc _sr bd ) v =
-  Vec.map (fromIntegral . unNormalize bd) v
+convertVector (AudioFormat _nc _sr bd ) =
+  Vec.map (fromIntegral . unNormalize bd)
 
 unNormalize :: BitDepth -> Double -> Int
 unNormalize 8 a = double2Int (128 * (1 + a))

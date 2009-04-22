@@ -52,7 +52,6 @@ import Control.Parallel.Strategies
 import Data.Int
 import Data.Word
 import qualified Data.IntMap as IM
-import System.IO
 
 -- =====================================================
 -- WAVE libary code
@@ -326,7 +325,7 @@ dict_get_data_length :: AudioFormat ->
                         WAVEDict ->
                         Maybe Integer
 dict_get_data_length af ix dict = IM.lookup (fromEnum WAVE_DATA) dict >>= \xs ->
-  let (WAVEDE off _ _) = (!!) xs ix in Just ((fromIntegral off) `div` bd)
+  let (WAVEDE off _ _) = (!!) xs ix in Just (fromIntegral off `div` bd)
   where
   bd = bitDepth af `div` 8
 

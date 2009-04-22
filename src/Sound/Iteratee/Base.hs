@@ -68,7 +68,7 @@ type V = SV.Vector
 -- | An enumerator that creates an interleaved stream from a channelized
 -- stream.
 mux :: Monad m => AudioFormat -> EnumeratorN [] (V Double) V Double m a
-mux af = convStream (muxFunc $ numberOfChannels af)
+mux = convStream . muxFunc . numberOfChannels
 
 -- |An Iteratee to be used in convStream to mux a channelized stream.
 muxFunc :: Monad m =>
@@ -98,7 +98,7 @@ muxCreateV :: [V Double] -> Ptr Double -> IO ()
 muxCreateV [] _   = return ()
 muxCreateV vs ptr = case mlen of
   Just 0  -> return ()
-  Just _n -> pokeArray ptr $ concat . transpose . fmap (SV.unpack) $ vs
+  Just _n -> pokeArray ptr $ concat . transpose . fmap SV.unpack $ vs
   Nothing -> error "Stream error: unequal channel stream lengths"
   where
   pLen = SV.length $ Prelude.head vs
@@ -109,7 +109,7 @@ muxCreateV vs ptr = case mlen of
 -- | A stream enumerator to convert an interleaved audio stream to a 
 -- channelized stream.
 deMux :: Monad m => AudioFormat -> EnumeratorN V Double [] (V Double) m a
-deMux af = convStream (deMuxFunc $ numberOfChannels af)
+deMux = convStream . deMuxFunc . numberOfChannels
 
 -- | An iteratee to convert an interleaved stream to a channelized stream.
 deMuxFunc :: Monad m =>
