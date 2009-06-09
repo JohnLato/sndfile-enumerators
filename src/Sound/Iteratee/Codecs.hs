@@ -16,7 +16,7 @@ import qualified Data.StorableVector as SV
 getWriter :: SupportedFileFormat ->
              FilePath ->
              AudioFormat ->
-             IterateeGM SV.Vector Double AudioMonad ()
+             IterateeG SV.Vector Double AudioMonad ()
 getWriter Wave = writeWave
 getWriter Raw  = error "No writer defined for Raw format"
 

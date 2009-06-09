@@ -38,63 +38,63 @@ be :: IO Bool
 be = fmap (==1) $ FMU.with (1 :: Word16) (\p -> peekByteOff p 1 :: IO Word8)
 
 -- convenience function to read a 4-byte ASCII string
-string_read4 :: Monad m => IterateeGM V Word8 m (Maybe String)
-string_read4 =
-  bindm Iter.head $ \s1 ->
-   bindm Iter.head $ \s2 ->
-   bindm Iter.head $ \s3 ->
-   bindm Iter.head $ \s4 ->
-   return . Just $ map (chr . fromIntegral) [s1, s2, s3, s4]
+string_read4 :: Monad m => IterateeG V Word8 m (String)
+string_read4 = do
+  s1 <- Iter.head
+  s2 <- Iter.head
+  s3 <- Iter.head
+  s4 <- Iter.head
+  return $ map (chr . fromIntegral) [s1, s2, s3, s4]
 
-unroll_8 :: (Monad m) => IterateeGM V Word8 m (Maybe (V Word8))
-unroll_8 = liftI $ Iter.Cont step
+unroll_8 :: (Monad m) => IterateeG V Word8 m (Maybe (V Word8))
+unroll_8 = IterateeG step
   where
   step (Chunk vec)
-    | Vec.null vec = unroll_8
-    | True         = liftI $ Iter.Done (Just vec) (Chunk Vec.empty)
-  step stream      = liftI $ Iter.Done Nothing stream
+    | Vec.null vec = return $ Cont unroll_8 Nothing
+    | True         = return $ Done (Just vec) (Chunk Vec.empty)
+  step stream      = return $ Done Nothing stream
 
 -- When unrolling to a Word8, use the specialized unroll_8 function
 -- because we actually don't need to do anything
 {-# RULES "unroll_8" forall n. unroll_n n = unroll_8 #-}
 unroll_n :: (Storable a, MonadIO m) =>
             Int ->
-            IterateeGM V Word8 m (Maybe (V a))
-unroll_n wSize = liftI $ Iter.Cont step
+            IterateeG V Word8 m (Maybe (V a))
+unroll_n wSize = IterateeG step
   where
   step (Chunk vec)
-    | Vec.null vec                    = unroll_n wSize
-  step (Chunk vec)
-    | Vec.length vec < wSize          = liftI $ Iter.Cont $ step' vec
-  step (Chunk vec)
-    | Vec.length vec `rem` wSize == 0 = liftIO (convert_vec vec) >>= \v ->
-                                        liftI $ Iter.Done v (Chunk Vec.empty)
-  step (Chunk vec)                    =
+    | Vec.null vec           = return $ Cont (unroll_n wSize) Nothing
+    | Vec.length vec < wSize = return $ Cont (IterateeG $ step' vec) Nothing
+    | Vec.length vec `rem` wSize == 0
+                             = liftIO (convert_vec vec) >>= \v ->
+                               return $ Iter.Done v (Chunk Vec.empty)
+  step (Chunk vec)           =
                 let newLen = (Vec.length vec `div` wSize) * wSize
                     (h, t) = Vec.splitAt newLen vec
                 in
-                liftIO (convert_vec h) >>= \v -> liftI $ Iter.Done v (Chunk t)
-  step stream = liftI $ Iter.Done Nothing stream
+                liftIO (convert_vec h) >>= \v -> return $ Done v (Chunk t)
+  step stream = return $ Done Nothing stream
   step' i (Chunk vec)
-    | Vec.null vec                          = liftI $ Iter.Cont $ step' i
-    | Vec.length vec + Vec.length i < wSize = liftI $ Iter.Cont $ step'
-                                              (Vec.append i vec)
-    | True        = let vec' = Vec.append i vec
-                        newLen = (Vec.length vec' `div` wSize) * wSize
-                        (h, t) = Vec.splitAt newLen vec'
-                    in
-                    liftIO (convert_vec h) >>= \v ->
-                      liftI $ Iter.Done v (Chunk t)
-  step' _i stream = liftI $ Iter.Done Nothing stream
-  convert_vec vec = let (fp, off, len) = VB.toForeignPtr vec
-                        f = FP.plusPtr (FFP.unsafeForeignPtrToPtr fp) off
-                    in
-                    do
-                    newFp <- FFP.newForeignPtr_ f
-                    let newV = VB.fromForeignPtr (FFP.castForeignPtr newFp)
-                               (len `div` wSize)
-                    v' <- host_to_le newV
-                    return $ Just v'
+    | Vec.null vec = return $ Cont (IterateeG $ step' i) Nothing
+    | Vec.length vec + Vec.length i < wSize
+                   = return $ Cont
+                              (IterateeG $ step' (Vec.append i vec))
+                              Nothing
+    | True         = let vec' = Vec.append i vec
+                         newLen = (Vec.length vec' `div` wSize) * wSize
+                         (h, t) = Vec.splitAt newLen vec'
+                     in
+                     liftIO (convert_vec h) >>= \v -> return $ Done v (Chunk t)
+  step' _i stream  = return $ Done Nothing stream
+  convert_vec vec  = let (fp, off, len) = VB.toForeignPtr vec
+                         f = FP.plusPtr (FFP.unsafeForeignPtrToPtr fp) off
+                     in
+                     do
+                     newFp <- FFP.newForeignPtr_ f
+                     let newV = VB.fromForeignPtr (FFP.castForeignPtr newFp)
+                                (len `div` wSize)
+                     v' <- host_to_le newV
+                     return $ Just v'
 
 host_to_le :: Storable a => V a -> IO (V a)
 host_to_le vec = do
@@ -144,7 +144,7 @@ swap_bytes wSize p = case wSize of
 -- |Convert Word8s to Doubles
 conv_func :: (MonadIO m, Functor m) =>
              AudioFormat ->
-             IterateeGM V Word8 m (Maybe (V Double))
+             IterateeG V Word8 m (Maybe (V Double))
 conv_func (AudioFormat _nc _sr 8) = (fmap . fmap . Vec.map)
   (normalize 8 . (fromIntegral :: Word8 -> Int8)) unroll_8
 conv_func (AudioFormat _nc _sr 16) = (fmap . fmap . Vec.map)
@@ -156,7 +156,7 @@ conv_func (AudioFormat _nc _sr 24) = (fmap . fmap . Vec.map)
 conv_func (AudioFormat _nc _sr 32) = (fmap . fmap . Vec.map)
   (normalize 32 . (fromIntegral :: Word32 -> Int32))
   (unroll_n $ sizeOf (undefined :: Word32))
-conv_func _ = Iter.iterErr "Invalid wave bit depth" >> return Nothing
+conv_func _ = throwErr (Err "Invalid wave bit depth")
 
 -- ---------------------
 -- convenience functions

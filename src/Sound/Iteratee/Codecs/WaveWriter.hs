@@ -47,7 +47,7 @@ instance WritableAudio WaveCodec where
 -- |Create an iteratee to write data to a wave file.
 writeWave :: FilePath ->
              AudioFormat ->
-             IterateeGM Vec.Vector Double AudioMonad ()
+             IterateeG Vec.Vector Double AudioMonad ()
 writeWave fp af = do
   lift $ openWave fp
   lift $ writeFormat af
@@ -56,10 +56,11 @@ writeWave fp af = do
   lift closeWave
   lift $ put NoState
   where
-  loop = liftI $ Cont step
-  step (Chunk vec) | Vec.null vec = loop
-  step (Chunk vec)                = lift (writeDataChunk vec) >> loop
-  step stream                     = liftI $ Done () stream
+  loop = IterateeG step
+  step (Chunk vec)
+    | Vec.null vec = return $ Cont loop Nothing
+    | True         = writeDataChunk vec >> return (Cont loop Nothing)
+  step stream      = return $ Done () stream
 
 -- |Open a wave file for writing
 openWave :: FilePath -> AudioMonad ()

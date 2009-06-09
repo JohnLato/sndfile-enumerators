@@ -31,10 +31,10 @@ import System.IO
 -- supports RandomIO (seek requests).
 -- this version uses handles for compatibility
 enumAudioFile :: ReadableChunk s el =>
-                  Handle ->
-                  EnumeratorGM s el AudioMonad a
-enumAudioFile h iter = lift get >>= \st ->
- IM $ liftIO $ allocaBytes (fromIntegral buffer_size) (loop st (0,0) iter)
+                 Handle ->
+                 EnumeratorGM s el AudioMonad a
+enumAudioFile h iter = get >>= \st ->
+ liftIO $ allocaBytes (fromIntegral buffer_size) (loop st (0,0) iter)
  where
   buffer_size = 4096
   -- the second argument of loop is (off,len), describing which part
@@ -45,28 +45,31 @@ enumAudioFile h iter = lift get >>= \st ->
           IterateeG s el AudioMonad a ->
 	  Ptr el ->
           IO (IterateeG s el AudioMonad a)
-  loop _sst _pos iter'@Done{} _p = return iter'
-  loop sst pos@(off,len) (Seek off' c) p |
-    off <= off' && off' < off + fromIntegral len =	-- Seek within buffer p
-    do
-    let local_off = fromIntegral $ off' - off
-    str <- readFromPtr (p `plusPtr` local_off) (len - local_off)
-    (im, s) <- runStateT (unIM $ c (Chunk str)) sst
-    loop s pos im p
-  loop sst _pos iter'@(Seek off c) p = do -- Seek outside the buffer
-   off' <- (try $ hSeek h AbsoluteSeek
-             (fromIntegral off)) :: IO (Either SomeException ())
-   case off' of
-    Left _errno -> evalStateT (unIM $ enumErr "IO error" iter') sst
-    Right _     -> loop sst (off, 0) (Cont c) p
   loop _sst (off,len) _iter' _p | off `seq` len `seq` False = undefined
-  loop sst (off,len) iter'@(Cont step) p = do
+  loop sst (off,len) iter' p = do
    n <- (try $ hGetBuf h p buffer_size) :: IO (Either SomeException Int)
    case n of
-    Left _errno -> evalStateT (unIM $ step (Error "IO error")) sst
+    Left _errno -> evalStateT (enumErr "IO error" iter') sst
     Right 0 -> return iter'
     Right n' -> do
          s <- readFromPtr p (fromIntegral n')
-         (im, sst') <- runStateT (unIM $ step (Chunk s)) sst
-	 loop sst' (off + fromIntegral len,fromIntegral n') im p
+         (igv, sst') <- runStateT (runIter iter' (Chunk s)) sst
+	 check sst' (off + fromIntegral len,fromIntegral n') igv p
+  seekTo sst pos@(off,len) off' iter' p
+    | off <= off' && off' < off + fromIntegral len =	-- Seek within buffer
+    do
+    let local_off = fromIntegral $ off' - off
+    str <- readFromPtr (p `plusPtr` local_off) (len - local_off)
+    (igv, s) <- runStateT (runIter iter' (Chunk str)) sst
+    check s pos igv p
+  seekTo sst _pos off iter' p = do		-- Seek outside the buffer
+    off' <- (try $ hSeek h AbsoluteSeek
+             (fromIntegral off)) :: IO (Either SomeException ())
+    case off' of
+      Left _errno -> evalStateT (enumErr "IO error" iter') sst
+      Right _     -> loop sst (off, 0) iter' p
+  check _   _ (Done x _)                 _ = return . return $ x
+  check sst o (Cont k Nothing)           p = loop sst o k p
+  check sst o (Cont k (Just (Seek off))) p = seekTo sst o off k p
+  check _   _ (Cont _ (Just e))          _ = return $ throwErr e
 

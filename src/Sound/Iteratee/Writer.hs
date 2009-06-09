@@ -17,7 +17,7 @@ import Data.Iteratee.Base.StreamChunk
 
 import System.IO
 
--- |Process a file using the given IterateeGM.  This function wraps
+-- |Process a file using the given IterateeG.  This function wraps
 -- enumAudioFile as a convenience.
 
 runAudioMonad :: AudioMonad a -> IO a
@@ -27,17 +27,12 @@ runAudioMonad am = do
     NoState     -> return a
     WaveState{} -> runWaveAM (put s >> return a)
 
-fileDriverAudio :: ReadableChunk s el => IterateeGM s el AudioMonad a ->
+fileDriverAudio :: ReadableChunk s el => IterateeG s el AudioMonad a ->
                FilePath ->
-               IO (Either (String, a) a)
+               IO a
 fileDriverAudio iter filepath = do
   h <- openBinaryFile filepath ReadMode
-  result <- runAudioMonad (unIM $ (enumAudioFile h >. enumEof) ==<< iter)
+  result <- runAudioMonad (enumAudioFile h iter >>= run)
   hClose h
-  print_res result
- where
-  print_res (Done a (Error err)) = return $ Left (err, a)
-  print_res (Done a _) = return $ Right a
-  print_res (Cont _) = return $ Left ("Iteratee unfinished", undefined)
-  print_res (Seek _ _) = return $ Left ("Iteratee unfinished", undefined)
-                           
+  return result
+

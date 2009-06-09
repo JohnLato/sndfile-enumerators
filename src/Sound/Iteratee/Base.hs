@@ -23,6 +23,7 @@ import Sound.Iteratee.Instances()
 
 import Data.Iteratee
 import Data.List
+import Data.Monoid
 import qualified Data.StorableVector as SV
 import qualified Data.StorableVector.Base as SVB
 import Foreign.Marshal.Array
@@ -73,18 +74,16 @@ mux = convStream . muxFunc . numberOfChannels
 -- |An Iteratee to be used in convStream to mux a channelized stream.
 muxFunc :: Monad m =>
            NumChannels ->
-           IterateeGM [] (V Double) m (Maybe (V Double))
-muxFunc n = liftI $ Cont step
+           IterateeG [] (V Double) m (Maybe (V Double))
+muxFunc n = IterateeG step
   where
   nInt = fromIntegral n
-  step (Chunk [])   = muxFunc n
+  step (Chunk [])   = return $ Cont (muxFunc n) Nothing
   step (Chunk vs) | length vs >= nInt = let (hs, r) = splitAt nInt vs in
-                      liftI $ Done (Just $ interleaveVectors hs) (Chunk r)
-  step (Chunk vs)   = liftI $ Cont $ step' vs
-  step str          = liftI $ Done Nothing str
-  step' i0 (Chunk []) = liftI $ Cont $ step' i0
-  step' i0 (Chunk vs) = step $ Chunk $ i0 ++ vs
-  step' _i0 str       = liftI $ Done Nothing str
+                      return $ Done (Just $ interleaveVectors hs) (Chunk r)
+  step c@(Chunk _)  = return $ Cont (step' c) Nothing
+  step str          = return $ Done Nothing str
+  step' i0          = IterateeG (step . mappend i0)
 
 -- | Interleave a list of vectors (channel streams) into one stream.
 interleaveVectors :: [V Double] -> V Double
@@ -114,16 +113,15 @@ deMux = convStream . deMuxFunc . numberOfChannels
 -- | An iteratee to convert an interleaved stream to a channelized stream.
 deMuxFunc :: Monad m =>
              NumChannels ->
-             IterateeGM V Double m (Maybe ([V Double]))
-deMuxFunc n = liftI $ Cont step
+             IterateeG V Double m (Maybe ([V Double]))
+deMuxFunc n = IterateeG step
   where
   n' = fromIntegral n
-  step (Chunk v) | SV.length v < n' = liftI $ Cont (step' v)
+  step c@(Chunk v) | SV.length v < n' = return $ Cont (step' c) Nothing
   step (Chunk v) = let (vecs, rm) = splitVector n v in
-                   liftI $ Done (Just vecs) $ Chunk rm
-  step str = liftI $ Done Nothing str
-  step' i0  (Chunk v) = step $ Chunk $ SV.append i0 v
-  step' _i0 str       = liftI $ Done Nothing str
+                   return $ Done (Just vecs) $ Chunk rm
+  step str = return $ Done Nothing str
+  step' i0 = IterateeG (step . mappend i0)
 
 -- | Split an interleaved vector to a list of channelized vectors.
 -- The second half of the tuple is any data remaining after splitting

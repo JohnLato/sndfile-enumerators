@@ -17,5 +17,5 @@ type V = SV.Vector
 readRaw :: (MonadIO m, Functor m) =>
            AudioFormat -> EnumeratorGMM V Word8 V Double m a
 readRaw fmt iter_dub = let iter = convStream (conv_func fmt) iter_dub in
-  joinI iter
+  return . joinI $ iter
 
