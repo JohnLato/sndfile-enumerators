@@ -126,7 +126,7 @@ closeWave = do
       liftIO $ LB.hPut h $ P.runPut $ P.putWord32le $ fromIntegral i'
       liftIO $ hClose h
     WaveState Nothing  _  _ _  _ -> error "Can't close file: no handle"
-    _ -> error "Can't close file: isn't a WAVE file"
+    x -> error $ "Can't close file: isn't a WAVE file: " ++ (show x)
 
 runWaveAM :: AudioMonad a -> IO a
 runWaveAM m = evalStateT (m >>= (\a -> closeWave >> return a))
