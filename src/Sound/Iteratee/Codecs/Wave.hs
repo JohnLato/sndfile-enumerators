@@ -38,6 +38,8 @@ module Sound.Iteratee.Codecs.Wave (
 )
 where
 
+import Prelude as P
+
 import Sound.Iteratee.Codecs.WaveWriter
 import Sound.Iteratee.Base
 import qualified Data.Iteratee.Base as Iter
@@ -104,7 +106,7 @@ waveChunk :: String -> Maybe WAVE_CHUNK
 waveChunk str
   | str == "fmt " = Just WAVE_FMT
   | str == "data" = Just WAVE_DATA
-  | length str == 4 = Just $ WAVE_OTHER str
+  | P.length str == 4 = Just $ WAVE_OTHER str
   | otherwise = Nothing
 
 -- |Convert a WAVE_CHUNK to the representative string
@@ -169,7 +171,7 @@ find_chunks n = find_chunks' 12 []
 load_dict :: (MonadIO m, Functor m) =>
              [(Int, WAVE_CHUNK, Int)] ->
              IterateeG V Word8 m (Maybe WAVEDict)
-load_dict = foldl read_entry (return (Just IM.empty))
+load_dict = P.foldl read_entry (return (Just IM.empty))
   where
   read_entry dictM (offset, typ, count) = dictM >>=
     maybe (return Nothing) (\dict -> do

@@ -19,6 +19,7 @@ module Sound.Iteratee.Base (
 
 where
 
+import Prelude as P
 import Sound.Iteratee.Instances()
 
 import Data.Iteratee
@@ -79,7 +80,7 @@ muxFunc n = IterateeG step
   where
   nInt = fromIntegral n
   step (Chunk [])   = return $ Cont (muxFunc n) Nothing
-  step (Chunk vs) | length vs >= nInt = let (hs, r) = splitAt nInt vs in
+  step (Chunk vs) | P.length vs >= nInt = let (hs, r) = splitAt nInt vs in
                       return $ Done (Just $ interleaveVectors hs) (Chunk r)
   step c@(Chunk _)  = return $ Cont (step' c) Nothing
   step str          = return $ Done Nothing str
@@ -100,7 +101,7 @@ muxCreateV vs ptr = case mlen of
   Just _n -> pokeArray ptr $ concat . transpose . fmap SV.unpack $ vs
   Nothing -> error "Stream error: unequal channel stream lengths"
   where
-  pLen = SV.length $ Prelude.head vs
+  pLen = SV.length $ P.head vs
   mlen = case all (== pLen) (fmap SV.length $tail vs) of
     True -> Just pLen
     False -> Nothing
