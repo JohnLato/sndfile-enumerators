@@ -3,6 +3,8 @@
 {-# LANGUAGE BangPatterns #-}
 module Main where
 
+import Prelude as P
+
 import Data.Iteratee
 import Sound.Iteratee.Codecs.Wave
 import qualified Data.StorableVector as SV
@@ -35,18 +37,21 @@ test (Just dict) = do
   fmtm <- dictReadFirstFormat dict
   lift . putStrLn $ show fmtm
   maxm <- dictProcessData 0 dict max_iter
+  --maxm <- dictProcessData 0 dict max2
   lift . putStrLn $ show maxm
   return ()
 
--- an iteratee that calculates the maximum value found so far.
--- this could be written with snext as well, however it is more
--- efficient to operate on an entire chunk at once.
+-- |This version is faster, but lower-level
 max_iter :: IterateeG V Double IO Double
 max_iter = m' 0
   where
   m' acc = IterateeG (step acc)
   step acc (Chunk xs) | SV.null xs = return $ Cont (m' acc) Nothing
   step acc (Chunk xs) = return $ Cont
-                        (m' $! SV.foldl' (max . abs) acc xs)
+                        (m' $! SV.foldl' (flip (max . abs)) acc xs)
                         Nothing
   step acc str = return $ Done acc str
+
+-- |This version is slower, but high-level and easier to understand.
+max2 :: IterateeG V Double IO Double
+max2 = foldl' (flip (max . abs)) 0
