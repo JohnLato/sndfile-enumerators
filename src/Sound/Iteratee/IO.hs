@@ -36,7 +36,7 @@ enumAudioFile :: ReadableChunk s el =>
 enumAudioFile h iter = get >>= \st ->
  liftIO $ allocaBytes (fromIntegral buffer_size) (loop st (0,0) iter)
  where
-  buffer_size = 4096
+  buffer_size = 2048
   -- the second argument of loop is (off,len), describing which part
   -- of the file is currently in the buffer 'p'
   loop :: (ReadableChunk s el) =>

@@ -96,6 +96,8 @@ unroll_n wSize = IterateeG step
                      v' <- host_to_le newV
                      return $ Just v'
 
+{-# INLINE unroll_n #-}
+
 host_to_le :: Storable a => V a -> IO (V a)
 host_to_le vec = do
   be' <- be
@@ -111,6 +113,8 @@ host_to_le vec = do
       loop wSize fp len off  = do
         FFP.withForeignPtr fp (\p -> swap_bytes wSize (p `FP.plusPtr` off))
         loop wSize fp (len - 1) (off + 1)
+
+{-# INLINE host_to_le #-}
 
 swap_bytes :: Int -> FP.Ptr a -> IO ()
 swap_bytes wSize p = case wSize of
@@ -157,6 +161,8 @@ conv_func (AudioFormat _nc _sr 32) = (fmap . fmap . Vec.map)
   (normalize 32 . (fromIntegral :: Word32 -> Int32))
   (unroll_n $ sizeOf (undefined :: Word32))
 conv_func _ = throwErr (Err "Invalid wave bit depth")
+
+{-# INLINE conv_func #-}
 
 -- ---------------------
 -- convenience functions
