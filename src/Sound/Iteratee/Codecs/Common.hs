@@ -2,8 +2,6 @@
 module Sound.Iteratee.Codecs.Common (
   string_read4,
   join_m,
-  normalize,
-  unroll_n,
   conv_func
 )
   
@@ -96,8 +94,6 @@ unroll_n wSize = IterateeG step
                      v' <- host_to_le newV
                      return $ Just v'
 
-{-# INLINE unroll_n #-}
-
 host_to_le :: Storable a => V a -> IO (V a)
 host_to_le vec = do
   be' <- be
@@ -113,8 +109,6 @@ host_to_le vec = do
       loop wSize fp len off  = do
         FFP.withForeignPtr fp (\p -> swap_bytes wSize (p `FP.plusPtr` off))
         loop wSize fp (len - 1) (off + 1)
-
-{-# INLINE host_to_le #-}
 
 swap_bytes :: Int -> FP.Ptr a -> IO ()
 swap_bytes wSize p = case wSize of
@@ -162,7 +156,6 @@ conv_func (AudioFormat _nc _sr 32) = (fmap . fmap . Vec.map)
   (unroll_n $ sizeOf (undefined :: Word32))
 conv_func _ = throwErr (Err "Invalid wave bit depth")
 
-{-# INLINE conv_func #-}
 
 -- ---------------------
 -- convenience functions
@@ -176,8 +169,8 @@ join_m (Just a) = a
 -- This uses wave-standard normalization.  I'll support more formats
 -- if/when it becomes necessary.
 normalize :: Integral a => BitDepth -> a -> Double
-normalize 8 a = (fromIntegral a - 128) / 128
-normalize bd a = case (a > 0) of
+normalize 8 = \a -> (fromIntegral a - 128) / 128
+normalize bd = \a -> case a > 0 of
   True ->  fromIntegral a / divPos
   False -> fromIntegral a / divNeg
   where
