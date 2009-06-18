@@ -1,4 +1,3 @@
-{-# LANGUAGE RankNTypes #-}
 module Sound.Iteratee.Codecs.Common (
   string_read4,
   join_m,
@@ -171,9 +170,9 @@ join_m (Just a) = a
 normalize :: Integral a => BitDepth -> a -> Double
 normalize 8 = \a -> (fromIntegral a - 128) / 128
 normalize bd = \a -> case a > 0 of
-  True ->  fromIntegral a / divPos
-  False -> fromIntegral a / divNeg
+  True ->  fromIntegral a * mPos
+  False -> fromIntegral a * mNeg
   where
-    divPos = fromIntegral (1 `shiftL` fromIntegral (bd - 1) :: Integer) - 1
-    divNeg = fromIntegral (1 `shiftL` fromIntegral (bd - 1) :: Integer)
+    mPos = 1/ (fromIntegral (1 `shiftL` fromIntegral (bd - 1) :: Integer) - 1)
+    mNeg = 1/ fromIntegral (1 `shiftL` fromIntegral (bd - 1) :: Integer)
 
