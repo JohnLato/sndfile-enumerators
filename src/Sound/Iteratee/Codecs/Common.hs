@@ -1,7 +1,7 @@
 module Sound.Iteratee.Codecs.Common (
-  string_read4,
-  join_m,
-  conv_func
+  stringRead4,
+  joinMaybe,
+  convFunc
 )
   
 where
@@ -16,6 +16,7 @@ import qualified Foreign.Ptr as FP
 import qualified Foreign.ForeignPtr as FFP
 import Foreign.Storable
 import qualified Foreign.Marshal.Utils as FMU
+import Control.Monad
 import Control.Monad.Trans
 import Data.Char (chr)
 import Data.Int.Int24
@@ -35,41 +36,41 @@ be :: IO Bool
 be = fmap (==1) $ FMU.with (1 :: Word16) (\p -> peekByteOff p 1 :: IO Word8)
 
 -- convenience function to read a 4-byte ASCII string
-string_read4 :: Monad m => IterateeG V Word8 m (String)
-string_read4 = do
+stringRead4 :: Monad m => IterateeG V Word8 m (String)
+stringRead4 = do
   s1 <- Iter.head
   s2 <- Iter.head
   s3 <- Iter.head
   s4 <- Iter.head
   return $ map (chr . fromIntegral) [s1, s2, s3, s4]
 
-unroll_8 :: (Monad m) => IterateeG V Word8 m (Maybe (V Word8))
-unroll_8 = IterateeG step
+unroll8 :: (Monad m) => IterateeG V Word8 m (Maybe (V Word8))
+unroll8 = IterateeG step
   where
   step (Chunk vec)
-    | Vec.null vec = return $ Cont unroll_8 Nothing
+    | Vec.null vec = return $ Cont unroll8 Nothing
     | True         = return $ Done (Just vec) (Chunk Vec.empty)
   step stream      = return $ Done Nothing stream
 
--- When unrolling to a Word8, use the specialized unroll_8 function
+-- When unrolling to a Word8, use the specialized unroll8 function
 -- because we actually don't need to do anything
-{-# RULES "unroll_8" forall n. unroll_n n = unroll_8 #-}
-unroll_n :: (Storable a, MonadIO m) =>
+{-# RULES "unroll8" forall n. unroller n = unroll8 #-}
+unroller :: (Storable a, MonadIO m) =>
             Int ->
             IterateeG V Word8 m (Maybe (V a))
-unroll_n wSize = IterateeG step
+unroller wSize = IterateeG step
   where
   step (Chunk vec)
-    | Vec.null vec           = return $ Cont (unroll_n wSize) Nothing
+    | Vec.null vec           = return $ Cont (unroller wSize) Nothing
     | Vec.length vec < wSize = return $ Cont (IterateeG $ step' vec) Nothing
     | Vec.length vec `rem` wSize == 0
-                             = liftIO (convert_vec vec) >>= \v ->
-                               return $ Iter.Done v (Chunk Vec.empty)
+                             = liftIO $ liftM (flip Done (Chunk Vec.empty))
+                                              (convert_vec vec)
   step (Chunk vec)           =
                 let newLen = (Vec.length vec `div` wSize) * wSize
                     (h, t) = Vec.splitAt newLen vec
                 in
-                liftIO (convert_vec h) >>= \v -> return $ Done v (Chunk t)
+                liftIO $ liftM (flip Done (Chunk t)) (convert_vec h)
   step stream = return $ Done Nothing stream
   step' i (Chunk vec)
     | Vec.null vec = return $ Cont (IterateeG $ step' i) Nothing
@@ -81,7 +82,7 @@ unroll_n wSize = IterateeG step
                          newLen = (Vec.length vec' `div` wSize) * wSize
                          (h, t) = Vec.splitAt newLen vec'
                      in
-                     liftIO (convert_vec h) >>= \v -> return $ Done v (Chunk t)
+                     liftIO $ liftM (flip Done (Chunk t)) (convert_vec h)
   step' _i stream  = return $ Done Nothing stream
   convert_vec vec  = let (fp, off, len) = VB.toForeignPtr vec
                          f = FP.plusPtr (FFP.unsafeForeignPtrToPtr fp) off
@@ -90,11 +91,11 @@ unroll_n wSize = IterateeG step
                      newFp <- FFP.newForeignPtr_ f
                      let newV = VB.fromForeignPtr (FFP.castForeignPtr newFp)
                                 (len `div` wSize)
-                     v' <- host_to_le newV
+                     v' <- hostToLE newV
                      return $ Just v'
 
-host_to_le :: Storable a => V a -> IO (V a)
-host_to_le vec = do
+hostToLE :: Storable a => V a -> IO (V a)
+hostToLE vec = do
   be' <- be
   case be' of
     True -> let
@@ -106,11 +107,11 @@ host_to_le vec = do
     where
       loop _wSize _fp 0 _off = return vec
       loop wSize fp len off  = do
-        FFP.withForeignPtr fp (\p -> swap_bytes wSize (p `FP.plusPtr` off))
+        FFP.withForeignPtr fp (swapBytes wSize . flip FP.plusPtr off)
         loop wSize fp (len - 1) (off + 1)
 
-swap_bytes :: Int -> FP.Ptr a -> IO ()
-swap_bytes wSize p = case wSize of
+swapBytes :: Int -> FP.Ptr a -> IO ()
+swapBytes wSize p = case wSize of
                           1 -> return ()
                           2 -> do
                                w1 <- (peekByteOff p 0) :: IO Word8
@@ -139,36 +140,36 @@ swap_bytes wSize p = case wSize of
                                return ()
 
 -- |Convert Word8s to Doubles
-conv_func :: (MonadIO m, Functor m) =>
+convFunc :: (MonadIO m, Functor m) =>
              AudioFormat ->
              IterateeG V Word8 m (Maybe (V Double))
-conv_func (AudioFormat _nc _sr 8) = (fmap . fmap . Vec.map)
-  (normalize 8 . (fromIntegral :: Word8 -> Int8)) unroll_8
-conv_func (AudioFormat _nc _sr 16) = (fmap . fmap . Vec.map)
+convFunc (AudioFormat _nc _sr 8) = (fmap . fmap . Vec.map)
+  (normalize 8 . (fromIntegral :: Word8 -> Int8)) unroll8
+convFunc (AudioFormat _nc _sr 16) = (fmap . fmap . Vec.map)
   (normalize 16 . (fromIntegral :: Word16 -> Int16))
-  (unroll_n $ sizeOf (undefined :: Word16))
-conv_func (AudioFormat _nc _sr 24) = (fmap . fmap . Vec.map)
+  (unroller $ sizeOf (undefined :: Word16))
+convFunc (AudioFormat _nc _sr 24) = (fmap . fmap . Vec.map)
   (normalize 24 . (fromIntegral :: Word24 -> Int24))
-  (unroll_n $ sizeOf (undefined :: Word24))
-conv_func (AudioFormat _nc _sr 32) = (fmap . fmap . Vec.map)
+  (unroller $ sizeOf (undefined :: Word24))
+convFunc (AudioFormat _nc _sr 32) = (fmap . fmap . Vec.map)
   (normalize 32 . (fromIntegral :: Word32 -> Int32))
-  (unroll_n $ sizeOf (undefined :: Word32))
-conv_func _ = throwErr (Err "Invalid wave bit depth")
+  (unroller $ sizeOf (undefined :: Word32))
+convFunc _ = throwErr (Err "Invalid wave bit depth")
 
 
 -- ---------------------
 -- convenience functions
 
 -- |Convert (Maybe []) to [].  Nothing maps to an empty list.
-join_m :: Maybe [a] -> [a]
-join_m Nothing = []
-join_m (Just a) = a
+joinMaybe :: Maybe [a] -> [a]
+joinMaybe Nothing = []
+joinMaybe (Just a) = a
 
 -- |Normalize a given value for the provided bit depth.
 -- This uses wave-standard normalization.  I'll support more formats
 -- if/when it becomes necessary.
 normalize :: Integral a => BitDepth -> a -> Double
-normalize 8 = \a -> (fromIntegral a - 128) / 128
+normalize 8 = \a -> let m = 1 / 128 in m * (fromIntegral a - 128)
 normalize bd = \a -> case a > 0 of
   True ->  fromIntegral a * mPos
   False -> fromIntegral a * mNeg

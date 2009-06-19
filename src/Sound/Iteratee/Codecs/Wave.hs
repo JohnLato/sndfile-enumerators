@@ -123,8 +123,8 @@ waveReader = do
   readRiff
   tot_size <- endianRead4 LSB
   readRiffWave
-  chunks_m <- find_chunks $ fromIntegral tot_size
-  load_dict $ join_m chunks_m
+  chunks_m <- findChunks $ fromIntegral tot_size
+  loadDict $ joinMaybe chunks_m
 
 -- |Read the RIFF header of a file.
 readRiff :: Monad m => IterateeG V Word8 m ()
@@ -144,18 +144,18 @@ readRiffWave = do
 
 -- | An internal function to find all the chunks.  It assumes that the
 -- stream is positioned to read the first chunk.
-find_chunks :: Monad m =>
+findChunks :: Monad m =>
                Int ->
                IterateeG V Word8 m (Maybe [(Int, WAVE_CHUNK, Int)])
-find_chunks n = find_chunks' 12 []
+findChunks n = findChunks' 12 []
   where
-  find_chunks' offset acc = do
+  findChunks' offset acc = do
     mpad <- Iter.peek
     if (offset `mod` 2 == 1) && (mpad == Just 0)
-      then Iter.drop 1 >> find_chunks'2 offset acc
-      else find_chunks'2 offset acc
-  find_chunks'2 offset acc = do
-    typ <- string_read4
+      then Iter.drop 1 >> findChunks'2 offset acc
+      else findChunks'2 offset acc
+  findChunks'2 offset acc = do
+    typ <- stringRead4
     count <- endianRead4 LSB
     case waveChunk typ of
       Nothing -> (throwErr . Err $ "Bad subchunk descriptor: " ++ show typ)
@@ -165,17 +165,17 @@ find_chunks n = find_chunks' 12 []
               (fromIntegral offset, chk, fromIntegral count) : acc
           False -> do
             Iter.seek $ fromIntegral newpos
-            find_chunks' newpos $
+            findChunks' newpos $
              (fromIntegral offset, chk, fromIntegral count) : acc
 
-load_dict :: (MonadIO m, Functor m) =>
+loadDict :: (MonadIO m, Functor m) =>
              [(Int, WAVE_CHUNK, Int)] ->
              IterateeG V Word8 m (Maybe WAVEDict)
-load_dict = P.foldl read_entry (return (Just IM.empty))
+loadDict = P.foldl read_entry (return (Just IM.empty))
   where
   read_entry dictM (offset, typ, count) = dictM >>=
     maybe (return Nothing) (\dict -> do
-      enum_m <- read_value dict offset typ count
+      enum_m <- readValue dict offset typ count
       case (enum_m, IM.lookup (fromEnum typ) dict) of
         (Just enum, Nothing) -> --insert new entry
           return . Just $ IM.insert (fromEnum typ)
@@ -187,25 +187,25 @@ load_dict = P.foldl read_entry (return (Just IM.empty))
         (Nothing, _) -> return (Just dict)
     )
 
-read_value :: (MonadIO m, Functor m) =>
+readValue :: (MonadIO m, Functor m) =>
               WAVEDict ->
               Int -> -- Offset
               WAVE_CHUNK -> -- Chunk type
               Int -> -- Count
               IterateeG V Word8 m (Maybe WAVEDE_ENUM)
-read_value _dict offset _ 0 =
+readValue _dict offset _ 0 =
   throwErr . Err $ "Zero count in the entry of chunk at: " ++ show offset
 
 -- TODO: In order to return a partial iteratee (rather than a full value),
 -- I can't use joinI because that sends EOF to the inner stream.  This may
 -- regain composability of iteratees for multiple files.
-read_value dict offset WAVE_DATA count = do
+readValue dict offset WAVE_DATA count = do
   fmt_m <- dictReadLastFormat dict
   case fmt_m of
     Just fmt ->
       (return . Just . WEN_DUB $ \iter_dub -> return $ do
         Iter.seek (8 + fromIntegral offset)
-        let iter = convStream (conv_func fmt) iter_dub
+        let iter = convStream (convFunc fmt) iter_dub
         joinI . joinI . takeR count $ iter
       ) `demanding` rnf fmt
     Nothing -> do
@@ -213,13 +213,13 @@ read_value dict offset WAVE_DATA count = do
       return Nothing
 
 -- return the WaveFormat iteratee
-read_value _dict offset WAVE_FMT count =
+readValue _dict offset WAVE_FMT count =
   return . Just . WEN_BYTE $ \iter -> return $ do
     Iter.seek (8 + fromIntegral offset)
     joinI $ Iter.takeR count iter
 
 -- for WAVE_OTHER, return Word8s and maybe the user can parse them
-read_value _dict offset (WAVE_OTHER _str) count =
+readValue _dict offset (WAVE_OTHER _str) count =
   return . Just . WEN_BYTE $ \iter -> return $ do
     Iter.seek (8 + fromIntegral offset)
     joinI $ Iter.takeR count iter
@@ -287,7 +287,7 @@ dictReadLastData :: (MonadIO m, Functor m) =>
                     IterateeG V Word8 m (Maybe [Double])
 dictReadLastData dict = case IM.lookup (fromEnum WAVE_DATA) dict of
   Just [] -> return Nothing
-  Just xs -> let (WAVEDE _ WAVE_DATA (WEN_DUB enum)) = last xs in do
+  Just xs -> let (WAVEDE _ WAVE_DATA (WEN_DUB enum)) = last xs in
     fmap Just (joinIM $ enum stream2list)
   _ -> return Nothing
 
@@ -297,7 +297,7 @@ dictReadData :: (MonadIO m, Functor m) =>
                 WAVEDict -> --Dictionary
                 IterateeG V Word8 m (Maybe [Double])
 dictReadData ix dict = case IM.lookup (fromEnum WAVE_DATA) dict of
-  Just xs -> let (WAVEDE _ WAVE_DATA (WEN_DUB enum)) = (!!) xs ix in do
+  Just xs -> let (WAVEDE _ WAVE_DATA (WEN_DUB enum)) = (!!) xs ix in
     fmap Just (joinIM $ enum stream2list)
   _ -> return Nothing
 
@@ -309,7 +309,7 @@ dictProcessData :: (MonadIO m, Functor m) =>
                    IterateeG V Double m a ->
                    IterateeG V Word8 m (Maybe a)
 dictProcessData ix dict iter = case IM.lookup (fromEnum WAVE_DATA) dict of
-  Just xs -> let (WAVEDE _ WAVE_DATA (WEN_DUB enum)) = (!!) xs ix in do
+  Just xs -> let (WAVEDE _ WAVE_DATA (WEN_DUB enum)) = (!!) xs ix in
     fmap Just (joinIM $ enum iter)
   _ -> return Nothing
 

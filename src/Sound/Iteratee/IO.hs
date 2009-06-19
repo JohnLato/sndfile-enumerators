@@ -68,7 +68,7 @@ enumAudioFile h iter = get >>= \st ->
     case off' of
       Left  _errno -> evalStateT (enumErr "IO error" iter') sst
       Right _      -> loop sst (off, 0) iter' p
-  check sst   _ (Done x _) _ = return $ lift (put sst >> (return x))
+  check sst   _ (Done x _) _ = return $ lift (put sst >> return x)
   check sst o (Cont k Nothing)           p = loop sst o k p
   check sst o (Cont k (Just (Seek off))) p = seekTo sst o off k p
   check _   _ (Cont _ (Just e))          _ = return $ throwErr e
