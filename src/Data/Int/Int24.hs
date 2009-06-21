@@ -44,9 +44,8 @@ data Int24 = I24# Int# deriving (Eq, Ord)
 -- the narrowings are primops in GHC; I don't have that luxury.
 narrow24Int# :: Int# -> Int#
 narrow24Int# x# = if int2Word# x# `gtWord#` int2Word# 0x007FFFFF#
-  then word2Int# (( int2Word# x# `or#` int2Word# 0xFF000000# ) `and#`
-                    int2Word# 0xFFFFFFFF# )
-  else word2Int# ( int2Word# x# `and#` int2Word# 0x00FFFFFF# )
+  then word2Int# ( int2Word# x# `or#` int2Word# 0xFF800000# )
+  else x#
 
 instance Show Int24 where
     showsPrec p x = showsPrec p (fromIntegral x :: Int)
