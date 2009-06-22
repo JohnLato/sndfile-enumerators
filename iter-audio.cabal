@@ -43,3 +43,4 @@ Library
                         Data.Word.Word24
  other-modules:         Sound.Iteratee.Codecs.WaveWriter
                         Sound.Iteratee.Codecs.Common
+

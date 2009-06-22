@@ -19,7 +19,10 @@ module Data.Int.Int24 (
     narrow24Int#,
     ) where
 
+import Data.Word.Word24
+
 import Data.Bits
+import Foreign.Storable
 
 import GHC.Base
 import GHC.Enum
@@ -30,6 +33,7 @@ import GHC.Arr
 import GHC.Word hiding (uncheckedShiftL64#, uncheckedShiftRL64#)
 import GHC.Int
 import GHC.Show
+import GHC.Ptr
 
 ------------------------------------------------------------------------
 -- type Int24
@@ -157,3 +161,8 @@ instance Bits Int24 where
 "fromIntegral/Int24->a"       fromIntegral = \(I24# x#) -> fromIntegral (I# x#)
   #-}
 
+instance Storable Int24 where
+  sizeOf _ = 3
+  alignment _ = 3
+  peek p = fmap fromIntegral $ peek ((castPtr p) :: Ptr Word24)
+  poke p v = poke (castPtr p :: Ptr Word24) (fromIntegral v)
