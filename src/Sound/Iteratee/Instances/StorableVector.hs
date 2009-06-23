@@ -13,7 +13,6 @@ import Data.Monoid
 import qualified Data.ListLike as LL
 import Foreign.Storable
 import Foreign.ForeignPtr
-import Foreign.Marshal.Array
 
 instance (Storable el) => LL.ListLike (SV.Vector el) el where
   length    = SV.length
