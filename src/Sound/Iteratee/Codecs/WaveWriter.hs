@@ -1,3 +1,5 @@
+{-# LANGUAGE ScopedTypeVariables #-}
+
 module Sound.Iteratee.Codecs.WaveWriter (
   -- * Types
   WaveCodec (..),
@@ -25,7 +27,6 @@ import qualified Data.ByteString.Char8 as BC
 import qualified Data.Binary.Put as P
 import Control.Monad.Trans
 import Data.Word
-import Data.Bits
 import Foreign.Storable
 import System.IO
 
@@ -160,22 +161,23 @@ writeDataRaw = do
 -- ------------------------------------------
 -- Data normalization and conversion functions
 
-convertVector :: (Integral a, Storable a) =>
+convertVector :: (Integral a, Storable a, Bounded a) =>
                  AudioFormat ->
                  Vec.Vector Double ->
                  Vec.Vector a
-convertVector (AudioFormat _nc _sr bd ) =
-  Vec.map (fromIntegral . unNormalize bd)
+convertVector (AudioFormat _nc _sr bd ) = Vec.map (unNormalize bd)
 
-unNormalize :: BitDepth -> Double -> Int
-unNormalize 8 a = double2Int (128 * (1 + a))
-unNormalize bd a = let 
-  posMult = fromIntegral $ (1 `shiftL` (fromIntegral bd - 1) :: Integer) - 1
-  negMult = fromIntegral (1 `shiftL` (fromIntegral bd - 1) :: Integer)
+-- 8 bits are handled separately because (at least in wave) they aren't 2's
+-- complement negatives.
+unNormalize :: forall a.(Integral a, Bounded a) => BitDepth -> Double -> a
+unNormalize 8 a = fromIntegral $ double2Int (128 * (1 + a))
+unNormalize _bd a = let 
+  posMult = fromIntegral (maxBound :: a)
+  negMult = fromIntegral (minBound :: a)
   in
   case (a >= 0) of
-    True -> roundDouble (posMult * clip a)
-    False -> roundDouble (negMult * clip a)
+    True  -> fromIntegral . roundDouble . (*) posMult . clip $ a
+    False -> fromIntegral . roundDouble . (*) negMult . clip $ a
 
 clip :: Double -> Double
 clip = max (-1) . min 1
