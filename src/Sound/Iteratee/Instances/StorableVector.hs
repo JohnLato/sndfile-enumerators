@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleInstances, MultiParamTypeClasses, FlexibleContexts, UndecidableInstances #-}
+{-# LANGUAGE FlexibleInstances, MultiParamTypeClasses, FlexibleContexts, UndecidableInstances, ScopedTypeVariables #-}
 
 module Sound.Iteratee.Instances.StorableVector (
   vmap
@@ -13,6 +13,7 @@ import Data.Monoid
 import qualified Data.ListLike as LL
 import Foreign.Storable
 import Foreign.ForeignPtr
+import Foreign.Marshal.Array
 
 instance (Storable el) => LL.ListLike (SV.Vector el) el where
   length    = SV.length
@@ -54,7 +55,14 @@ vmap' = SV.map
 
 {-# RULES "svmap/map" forall s (f :: (Storable el') => el -> el'). vmap f s = vmap' f s #-}
 
-instance (Storable el) => SC.ReadableChunk SV.Vector el where
-  readFromPtr p l = do
-    fptr <- newForeignPtr_ p
-    return $ SVBase.fromForeignPtr fptr l
+instance forall el.(Storable el) => SC.ReadableChunk SV.Vector el where
+  readFromPtr p l =
+    let s = sizeOf (undefined :: el)
+        l' = l `div` s
+    in
+    if rem l s /= 0 then error $
+      "Error reading stream: invalid number of bytes: " ++ (show l) ++ " size: " ++ show s
+    -- need to copy the data to a new buffer so the rest of the code can use it
+    -- properly.
+    else SVBase.create l' $ \newp -> copyArray newp p l'
+
