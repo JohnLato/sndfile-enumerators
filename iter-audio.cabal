@@ -16,7 +16,7 @@ category:       Codec, Sound
 build-type:     Simple
 cabal-version:  >= 1.2
 tested-with:    GHC == 6.10.3
-extra-source-files: README, LICENSE, LICENSE-OTHER, examples/wave_reader.hs, examples/wave_writer.hs, src/Data/LICENSE
+extra-source-files: README, LICENSE, examples/wave_reader.hs, examples/wave_writer.hs, src/Data/LICENSE
 
 flag splitBase
   description: Choose the new split-up base package.
@@ -28,7 +28,7 @@ Library
    build-depends:       base >= 3, base < 5
  else
    build-depends:       base < 3
- build-depends:         haskell98, binary >= 0.5 && < 0.6, storablevector >= 0.2 && < 0.3, containers >= 0.2 && < 0.3, transformers >= 0.1.4 && < 0.2, iteratee >= 0.2.3 && < 0.3, bytestring >= 0.9.1 && < 0.10, extensible-exceptions >= 0.1 && < 0.2, parallel >= 1.1 && < 2, ListLike >= 1.0 && < 1.1
+ build-depends:         haskell98, binary >= 0.5 && < 0.6, storablevector >= 0.2 && < 0.3, containers >= 0.2 && < 0.3, transformers >= 0.1.4 && < 0.2, iteratee >= 0.2.3 && < 0.3, bytestring >= 0.9.1 && < 0.10, extensible-exceptions >= 0.1 && < 0.2, parallel >= 1.1 && < 2, ListLike >= 1.0 && < 1.1, word24 >= 0.1 && < 0.2
  exposed-modules:       Sound.Iteratee
                         Sound.Iteratee.Base
                         Sound.Iteratee.Codecs
@@ -39,8 +39,6 @@ Library
                         Sound.Iteratee.Instances
                         Sound.Iteratee.Instances.StorableVector
                         Sound.Iteratee.Writer
-                        Data.Int.Int24
-                        Data.Word.Word24
  other-modules:         Sound.Iteratee.Codecs.WaveWriter
                         Sound.Iteratee.Codecs.Common
 
