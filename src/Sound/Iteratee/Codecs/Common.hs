@@ -114,20 +114,20 @@ swapBytes :: Int -> FP.Ptr a -> IO ()
 swapBytes wSize p = case wSize of
                           1 -> return ()
                           2 -> do
-                               w1 <- (peekByteOff p 0) :: IO Word8
-                               w2 <- (peekByteOff p 1) :: IO Word8
+                               w1 <- peekByteOff p 0 :: IO Word8
+                               w2 <- peekByteOff p 1 :: IO Word8
                                pokeByteOff p 0 w2
                                pokeByteOff p 1 w1
                           3 -> do
-                               w1 <- (peekByteOff p 0) :: IO Word8
-                               w3 <- (peekByteOff p 2) :: IO Word8
+                               w1 <- peekByteOff p 0 :: IO Word8
+                               w3 <- peekByteOff p 2 :: IO Word8
                                pokeByteOff p 0 w3
                                pokeByteOff p 1 w1
                           4 -> do
-                               w1 <- (peekByteOff p 0) :: IO Word8
-                               w2 <- (peekByteOff p 1) :: IO Word8
-                               w3 <- (peekByteOff p 2) :: IO Word8
-                               w4 <- (peekByteOff p 3) :: IO Word8
+                               w1 <- peekByteOff p 0 :: IO Word8
+                               w2 <- peekByteOff p 1 :: IO Word8
+                               w3 <- peekByteOff p 2 :: IO Word8
+                               w4 <- peekByteOff p 3 :: IO Word8
                                pokeByteOff p 0 w4
                                pokeByteOff p 1 w3
                                pokeByteOff p 2 w2
@@ -135,7 +135,7 @@ swapBytes wSize p = case wSize of
                           x -> do
                                let ns = [0..(x-1)]
                                ws <- sequence
-                                     [(peekByteOff p n) :: IO Word8 | n <- ns]
+                                     [peekByteOff p n :: IO Word8 | n <- ns]
                                sequence_ [ pokeByteOff p n w | n <- ns, w <- reverse ws]
                                return ()
 
@@ -170,9 +170,9 @@ joinMaybe (Just a) = a
 -- if/when it becomes necessary.
 normalize :: Integral a => BitDepth -> a -> Double
 normalize 8 = \a -> let m = 1 / 128 in m * (fromIntegral a - 128)
-normalize bd = \a -> case a > 0 of
-  True ->  fromIntegral a * mPos
-  False -> fromIntegral a * mNeg
+normalize bd = \a -> if a > 0
+                       then fromIntegral a * mPos
+                       else fromIntegral a * mNeg
   where
     mPos = 1/ (fromIntegral (1 `shiftL` fromIntegral (bd - 1) :: Integer) - 1)
     mNeg = 1/ fromIntegral (1 `shiftL` fromIntegral (bd - 1) :: Integer)

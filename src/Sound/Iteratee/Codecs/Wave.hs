@@ -70,13 +70,14 @@ type V = SV.Vector
 type WAVEDict = IM.IntMap [WAVEDE]
 
 data WAVEDE = WAVEDE{
-  wavede_count :: Int, -- ^length of chunk
-  wavede_type :: WAVE_CHUNK, -- ^type of chunk
-  wavede_enum :: WAVEDE_ENUM -- ^enumerator to get values of chunk
+  wavedeCount :: Int, -- ^length of chunk
+  wavedeType :: WAVE_CHUNK, -- ^type of chunk
+  wavedeEnum :: WAVEDE_ENUM -- ^enumerator to get values of chunk
   }
 
 instance Show WAVEDE where
-  show a = "Type: " ++ (show $ wavede_type a) ++ " :: Length: " ++ (show $ wavede_count a)
+  show a = "Type: " ++ show (wavedeType a) ++ " :: Length: " ++
+            show (wavedeCount a)
 
 data WAVEDE_ENUM =
   WEN_BYTE  (forall a m. (MonadIO m, Functor m) =>

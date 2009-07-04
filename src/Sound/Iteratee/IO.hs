@@ -47,7 +47,7 @@ enumAudioFile h iter = get >>= \st ->
           IO (IterateeG s el AudioMonad a)
   loop _sst (off,len) _iter' _p | off `seq` len `seq` False = undefined
   loop sst (off,len) iter' p = do
-    n <- (try $ hGetBuf h p buffer_size) :: IO (Either SomeException Int)
+    n <- try $ hGetBuf h p buffer_size :: IO (Either SomeException Int)
     case n of
       Left _errno -> evalStateT (enumErr "IO error" iter') sst
       Right 0 -> return iter'
@@ -63,8 +63,8 @@ enumAudioFile h iter = get >>= \st ->
     (igv, s) <- runStateT (runIter iter' (Chunk str)) sst
     check s pos igv p
   seekTo sst _pos off iter' p = do		-- Seek outside the buffer
-    off' <- (try $ hSeek h AbsoluteSeek
-            (fromIntegral off)) :: IO (Either SomeException ())
+    off' <- try $ hSeek h AbsoluteSeek
+            (fromIntegral off) :: IO (Either SomeException ())
     case off' of
       Left  _errno -> evalStateT (enumErr "IO error" iter') sst
       Right _      -> loop sst (off, 0) iter' p
