@@ -36,8 +36,11 @@ import System.IO
 enumAudioFile :: forall a s el.(ReadableChunk s el) =>
                  Handle ->
                  EnumeratorGM s el AudioMonad a
-enumAudioFile h iter = get >>= \st ->
- liftIO $ allocaBytes (fromIntegral buffer_size) (loop st (0,0) iter)
+enumAudioFile h iter = do
+ st <- get
+ (iter', st') <- liftIO $ allocaBytes buffer_size (loop st (0,0) iter)
+ put st'
+ return iter'
  where
   buffer_size = fromIntegral $ 2048 - (mod 2048 $ sizeOf (undefined :: el))
   -- the second argument of loop is (off,len), describing which part
@@ -46,13 +49,13 @@ enumAudioFile h iter = get >>= \st ->
           (FileOffset,Int) ->
           IterateeG s el AudioMonad a ->
 	  Ptr el ->
-          IO (IterateeG s el AudioMonad a)
+          IO (IterateeG s el AudioMonad a, AudioStreamState)
   loop _sst (off,len) _iter' _p | off `seq` len `seq` False = undefined
   loop sst (off,len) iter' p = do
     n <- try $ hGetBuf h p buffer_size :: IO (Either SomeException Int)
     case n of
-      Left _errno -> evalStateT (enumErr "IO error" iter') sst
-      Right 0  -> return iter'
+      Left _errno -> runStateT (enumErr "IO error" iter') sst
+      Right 0  -> return (iter', sst)
       Right n' -> do
          s <- readFromPtr p (fromIntegral n')
          (igv, sst') <- runStateT (runIter iter' (Chunk s)) sst
@@ -68,10 +71,10 @@ enumAudioFile h iter = get >>= \st ->
     off' <- try $ hSeek h AbsoluteSeek
             (fromIntegral off) :: IO (Either SomeException ())
     case off' of
-      Left  _errno -> evalStateT (enumErr "IO error" iter') sst
+      Left  _errno -> runStateT (enumErr "IO error" iter') sst
       Right _      -> loop sst (off, 0) iter' p
-  check sst   _ (Done x _) _ = return $ lift (put sst >> return x)
+  check sst   _ (Done x _) _ = return (lift (put sst) >> return x, sst)
   check sst o (Cont k Nothing)           p = loop sst o k p
   check sst o (Cont k (Just (Seek off))) p = seekTo sst o off k p
-  check _   _ (Cont _ (Just e))          _ = return $ throwErr e
+  check sst _ (Cont _ (Just e))          _ = return $ (throwErr e, sst)
 
