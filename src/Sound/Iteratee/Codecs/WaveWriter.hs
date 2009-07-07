@@ -18,15 +18,16 @@ where
 
 import Sound.Iteratee.Base
 import Sound.Iteratee.Instances()
-import Data.Word.Word24
 import Data.Iteratee.Base
+import Data.Int
+import Data.Int.Int24
 import qualified Data.StorableVector as Vec
 import qualified Data.StorableVector.Base as VB
 import qualified Data.ByteString.Lazy as LB
 import qualified Data.ByteString.Char8 as BC
 import qualified Data.Binary.Put as P
 import Control.Monad.Trans
-import Data.Word
+
 import Foreign.Storable
 import System.IO
 
@@ -109,10 +110,10 @@ writeDataChunk vec = do
     _                                 -> error "Can't write: not a WAVE file"
   where
   putVec af h vec' = case bitDepth af of
-    8  -> Vec.hPut h (convertVector af vec' :: Vec.Vector Word8)
-    16 -> Vec.hPut h (convertVector af vec' :: Vec.Vector Word16)
-    24 -> Vec.hPut h (convertVector af vec' :: Vec.Vector Word24)
-    32 -> Vec.hPut h (convertVector af vec' :: Vec.Vector Word32)
+    8  -> Vec.hPut h (convertVector af vec' :: Vec.Vector Int8)
+    16 -> Vec.hPut h (convertVector af vec' :: Vec.Vector Int16)
+    24 -> Vec.hPut h (convertVector af vec' :: Vec.Vector Int24)
+    32 -> Vec.hPut h (convertVector af vec' :: Vec.Vector Int32)
     x  -> error $ "Cannot write wave file: unsupported bit depth " ++ show x
   getLength af = fromIntegral (bitDepth af `div` 8) * Vec.length vec
 
@@ -173,11 +174,12 @@ unNormalize :: forall a.(Integral a, Bounded a) => BitDepth -> Double -> a
 unNormalize 8 a = fromIntegral $ double2Int (128 * (1 + a))
 unNormalize _bd a = let 
   posMult = fromIntegral (maxBound :: a)
-  negMult = fromIntegral (minBound :: a)
+  --input is already neg., so negMult needs to be positive to preserve sign
+  negMult = abs $ fromIntegral (minBound :: a)
   in
   case (a >= 0) of
-    True  -> fromIntegral . roundDouble . (*) posMult . clip $ a
-    False -> fromIntegral . roundDouble . (*) negMult . clip $ a
+    True  -> fromIntegral . roundDouble . (* posMult) . clip $ a
+    False -> fromIntegral . roundDouble . (* negMult) . clip $ a
 
 clip :: Double -> Double
 clip = max (-1) . min 1
