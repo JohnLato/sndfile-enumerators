@@ -1,3 +1,5 @@
+{-# LANGUAGE ScopedTypeVariables #-}
+
 -- |Random and Binary IO with generic Iteratees.
 
 module Sound.Iteratee.IO(
@@ -18,6 +20,7 @@ import Control.Monad.Trans
 import Control.Monad.Trans.State
 import Control.Exception.Extensible
 
+import Foreign.Storable
 import Foreign.Ptr
 import Foreign.Marshal.Alloc
 
@@ -30,17 +33,16 @@ import System.IO
 -- |The enumerator of a Handle: a variation of enumHandle that
 -- supports RandomIO (seek requests).
 -- this version uses handles for compatibility
-enumAudioFile :: ReadableChunk s el =>
+enumAudioFile :: forall a s el.(ReadableChunk s el) =>
                  Handle ->
                  EnumeratorGM s el AudioMonad a
 enumAudioFile h iter = get >>= \st ->
  liftIO $ allocaBytes (fromIntegral buffer_size) (loop st (0,0) iter)
  where
-  buffer_size = 1024
+  buffer_size = fromIntegral $ 2048 - (mod 2048 $ sizeOf (undefined :: el))
   -- the second argument of loop is (off,len), describing which part
   -- of the file is currently in the buffer 'p'
-  loop :: (ReadableChunk s el) =>
-          AudioStreamState ->
+  loop :: AudioStreamState ->
           (FileOffset,Int) ->
           IterateeG s el AudioMonad a ->
 	  Ptr el ->
@@ -50,7 +52,7 @@ enumAudioFile h iter = get >>= \st ->
     n <- try $ hGetBuf h p buffer_size :: IO (Either SomeException Int)
     case n of
       Left _errno -> evalStateT (enumErr "IO error" iter') sst
-      Right 0 -> return iter'
+      Right 0  -> return iter'
       Right n' -> do
          s <- readFromPtr p (fromIntegral n')
          (igv, sst') <- runStateT (runIter iter' (Chunk s)) sst
