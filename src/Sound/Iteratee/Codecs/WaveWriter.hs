@@ -172,7 +172,7 @@ convertVector (AudioFormat _nc _sr bd ) = Vec.map (unNormalize bd)
 -- complement negatives.
 unNormalize :: forall a.(Integral a, Bounded a) => BitDepth -> Double -> a
 unNormalize 8 a = fromIntegral $ double2Int (128 * (1 + a))
-unNormalize _bd a = let 
+unNormalize _bd a = let
   posMult = fromIntegral (maxBound :: a)
   --input is already neg., so negMult needs to be positive to preserve sign
   negMult = abs $ fromIntegral (minBound :: a)
