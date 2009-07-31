@@ -35,7 +35,6 @@ Library
                         Sound.Iteratee.Codecs.SupportedFormats
                         Sound.Iteratee.Codecs.Wave
                         Sound.Iteratee.Codecs.Raw
-                        Sound.Iteratee.IO
                         Sound.Iteratee.Instances
                         Sound.Iteratee.Instances.StorableVector
                         Sound.Iteratee.Writer
