@@ -8,6 +8,7 @@ module Sound.Iteratee.Base (
   module Control.Monad.Trans.State,
   -- ** Audio Format types
   AudioFormat (..),
+  SupportedBitDepths (..),
   NumChannels,
   SampleRate,
   BitDepth,
@@ -42,6 +43,7 @@ data AudioStreamState =
 class WritableAudio a where
   emptyState :: a -> AudioStreamState
   initState ::  a -> Handle -> AudioStreamState
+  supportedBitDepths :: a -> SupportedBitDepths
 
 -- | Audio monad stack (for writing files)
 type AudioMonad = StateT AudioStreamState IO
@@ -60,6 +62,8 @@ type NumChannels = Integer
 type SampleRate  = Integer
 type BitDepth    = Integer
 type FrameCount  = Integer
+
+data SupportedBitDepths = Any | Supported [BitDepth]
 
 -- -------------------------
 -- Multichannel support functions

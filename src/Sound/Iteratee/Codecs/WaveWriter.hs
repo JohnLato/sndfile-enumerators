@@ -42,6 +42,7 @@ data WaveCodec = WaveCodec
 instance WritableAudio WaveCodec where
   emptyState WaveCodec = WaveState Nothing Nothing 0 0 0
   initState WaveCodec h = WaveState (Just h) Nothing 0 0 0
+  supportedBitDepths WaveCodec = Supported [8,16,24,32]
 
 -- ---------------------
 -- Functions to support writing
