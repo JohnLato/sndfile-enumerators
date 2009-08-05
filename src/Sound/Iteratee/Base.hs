@@ -90,6 +90,14 @@ mux = convStream . muxFunc . numberOfChannels
 muxFunc :: Monad m =>
            NumChannels ->
            IterateeG [] (V Double) m (Maybe (V Double))
+muxFunc 1 = noIter -- we can take a shortcut for mono functions
+  where
+  noIter = IterateeG step
+  step (Chunk [])     = return $ Cont noIter Nothing
+  -- the tail should always be the empty list here, but it's handled the
+  -- same in either case so no need to verify.
+  step (Chunk (v:vs)) = return $ Done (Just $ v) (Chunk vs)
+  step str        = return $ Done Nothing str
 muxFunc n = IterateeG step
   where
   nInt = fromIntegral n
@@ -129,6 +137,12 @@ deMux = convStream . deMuxFunc . numberOfChannels
 deMuxFunc :: Monad m =>
              NumChannels ->
              IterateeG V Double m (Maybe ([V Double]))
+deMuxFunc 1 = noIter
+  where
+  noIter = IterateeG step
+  step (Chunk vs) | SV.null vs = return $ Cont noIter Nothing
+  step (Chunk vs) = return $ Done (Just [vs]) (Chunk mempty)
+  step str        = return $ Done Nothing str
 deMuxFunc n = IterateeG step
   where
   n' = fromIntegral n
