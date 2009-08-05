@@ -29,6 +29,13 @@ Library
  else
    build-depends:       base < 3
  build-depends:         haskell98, binary >= 0.5 && < 0.6, storablevector >= 0.2 && < 0.3, containers >= 0.2 && < 0.3, transformers >= 0.1.4 && < 0.2, iteratee >= 0.2.3 && < 0.3, bytestring >= 0.9.1 && < 0.10, extensible-exceptions >= 0.1 && < 0.2, parallel >= 1.1 && < 2, ListLike >= 1.0 && < 1.1, word24 >= 0.1 && < 0.2
+ extensions:            ExistentialQuantification
+                        RankNTypes
+                        ScopedTypeVariables
+                        MultiParamTypeClasses
+                        FlexibleInstances
+                        FlexibleContexts
+                        UndecidableInstances
  exposed-modules:       Sound.Iteratee
                         Sound.Iteratee.Base
                         Sound.Iteratee.Codecs
