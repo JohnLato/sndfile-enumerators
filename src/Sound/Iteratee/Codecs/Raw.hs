@@ -1,5 +1,6 @@
 module Sound.Iteratee.Codecs.Raw (
-  readRaw
+  RawCodec (..)
+  ,readRaw
 )
 
 where
@@ -13,6 +14,14 @@ import Data.Word
 import Control.Monad.Trans
 
 type V = SV.Vector
+
+data RawCodec = RawCodec
+
+instance WritableAudio RawCodec where
+  emptyState         RawCodec   = error "emptyState not defined for Raw files"
+  initState          RawCodec h = error "initState not defined for Raw files"
+  supportedBitDepths RawCodec   = Any
+  fileType           RawCodec   = Raw
 
 readRaw :: (MonadIO m, Functor m) =>
            AudioFormat -> EnumeratorGMM V Word8 V Double m a
