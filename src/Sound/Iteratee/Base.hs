@@ -13,6 +13,9 @@ module Sound.Iteratee.Base (
   SampleRate,
   BitDepth,
   FrameCount,
+  -- ** File Format Types
+  SupportedFileFormat (..),
+  -- * Functions
   -- ** Multichannel support functions
   mux,
   deMux
@@ -40,10 +43,17 @@ data AudioStreamState =
   | NoState
   deriving (Eq, Show)
 
+-- | An enumeration of all file types supported for reading and writing.
+data SupportedFileFormat = Raw
+                           | Wave
+                           deriving (Show, Enum, Bounded, Eq)
+
+-- | Common functions for writing audio data
 class WritableAudio a where
   emptyState :: a -> AudioStreamState
   initState ::  a -> Handle -> AudioStreamState
   supportedBitDepths :: a -> SupportedBitDepths
+  fileType           :: a -> SupportedFileFormat
 
 -- | Audio monad stack (for writing files)
 type AudioMonad = StateT AudioStreamState IO
