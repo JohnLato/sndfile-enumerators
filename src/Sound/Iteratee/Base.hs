@@ -31,8 +31,6 @@ import Data.List
 import Data.Monoid
 import qualified Data.StorableVector as SV
 import qualified Data.StorableVector.Base as SVB
-import Foreign.Marshal.Array
-import Foreign.Ptr
 import Control.Monad.Trans.State
 import Control.Parallel.Strategies
 import System.IO
@@ -101,7 +99,7 @@ muxFunc 1 = noIter -- we can take a shortcut for mono functions
 muxFunc n = IterateeG step
   where
   nInt = fromIntegral n
-  step (Chunk [])   = return $ Cont (muxFunc n) Nothing
+  step (Chunk [])   = return $ Cont (IterateeG step) Nothing
   step (Chunk vs) | P.length vs >= nInt = let (hs, r) = splitAt nInt vs in
                       return $ Done (Just $ interleaveVectors hs) (Chunk r)
   step c@(Chunk _)  = return $ Cont (step' c) Nothing
@@ -110,23 +108,7 @@ muxFunc n = IterateeG step
 
 -- | Interleave a list of vectors (channel streams) into one stream.
 interleaveVectors :: [V Double] -> V Double
-interleaveVectors vs = SVB.unsafeCreate (sum $ fmap SV.length vs)
-                       (muxCreateV vs)
-
--- | Create a buffer by interleaving a list of vectors.
--- To be used with SVB.unsafeCreate.
--- This function will fail if the vectors are of different lengths.
-muxCreateV :: [V Double] -> Ptr Double -> IO ()
-muxCreateV [] _   = return ()
-muxCreateV vs ptr = case mlen of
-  Just 0  -> return ()
-  Just _n -> pokeArray ptr $ concat . transpose . fmap SV.unpack $ vs
-  Nothing -> error "Stream error: unequal channel stream lengths"
-  where
-  pLen = SV.length $ P.head vs
-  mlen = case all (== pLen) (fmap SV.length $tail vs) of
-    True -> Just pLen
-    False -> Nothing
+interleaveVectors = SV.pack . concat . transpose . map SV.unpack
 
 -- | A stream enumerator to convert an interleaved audio stream to a 
 -- channelized stream.
@@ -147,7 +129,7 @@ deMuxFunc n = IterateeG step
   where
   n' = fromIntegral n
   step c@(Chunk v) | SV.length v < n' = return $ Cont (step' c) Nothing
-  step (Chunk v) = let (vecs, rm) = splitVector n v in
+  step (Chunk v) = let (vecs, rm) = channelizeVector n v in
                    return $ Done (Just vecs) $ Chunk rm
   step str = return $ Done Nothing str
   step' i0 = IterateeG (step . mappend i0)
@@ -155,22 +137,11 @@ deMuxFunc n = IterateeG step
 -- | Split an interleaved vector to a list of channelized vectors.
 -- The second half of the tuple is any data remaining after splitting
 -- to channels.
-splitVector :: NumChannels -> V Double -> ([V Double], V Double)
-splitVector 1 vec = ([vec], SV.empty)
-splitVector _n vec | SV.null vec = ([], SV.empty)
-splitVector n _vec | n <= 0 = error $ "Cannot demux " ++ show n ++ " channels."
-splitVector n vec = (channels, rm)
+channelizeVector :: NumChannels -> V Double -> ([V Double], V Double)
+channelizeVector n v = (splits, rm)
   where
-  nInt = fromIntegral n
-  (first, rm) = SV.splitAt (SV.length vec - (SV.length vec `rem` nInt)) vec
-  channels = [SVB.unsafeCreate (SV.length first `div` nInt)
-               (demuxCreateV a nInt vec) | a <- [0 .. nInt - 1]]
-
--- This function is meant to be used with Data.StorableVector.create
--- the first parameter is the offset from the front of the vector, and the
--- second is the hop size (e.g. 2 for 2-channel, etc.)
-demuxCreateV :: Int -> Int -> V Double -> Ptr Double -> IO ()
-demuxCreateV off hop vec ptr =
-  pokeArray ptr [SV.index vec (off + (x * hop)) | x <- [0 .. rm]]
-  where
-  rm = (SV.length vec `div` hop) - 1
+  rm = SV.drop (fromIntegral n * pLen) v
+  pLen = SV.length v `div` fromIntegral n
+  hop = fromIntegral $ n - 1
+  splits = map (fst . SV.unfoldrN pLen unfolder . flip SV.drop v) [0 .. hop]
+  unfolder = fmap (\(a, b) -> (a, SV.drop hop b)) . SV.viewL
