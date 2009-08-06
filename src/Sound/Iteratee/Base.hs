@@ -107,8 +107,14 @@ muxFunc n = IterateeG step
   step' i0          = IterateeG (step . mappend i0)
 
 -- | Interleave a list of vectors (channel streams) into one stream.
+--   All vectors should have the same length, otherwise the results
+--   may be inconsistent.
 interleaveVectors :: [V Double] -> V Double
-interleaveVectors = SV.pack . concat . transpose . map SV.unpack
+interleaveVectors cs = fst . SV.unfoldrN tLen unfolder $ cs
+  where
+    tLen = sum . map SV.length $ cs
+    unfolder []     = Nothing
+    unfolder (v:vs) = SV.viewL v >>= \(h, rm) -> Just (h, vs ++ [rm])
 
 -- | A stream enumerator to convert an interleaved audio stream to a 
 -- channelized stream.
