@@ -152,7 +152,7 @@ findChunks n = findChunks' 12 []
   where
   findChunks' offset acc = do
     mpad <- Iter.peek
-    if (offset `mod` 2 == 1) && (mpad == Just 0)
+    if (offset `rem` 2 == 1) && (mpad == Just 0)
       then Iter.drop 1 >> findChunks'2 offset acc
       else findChunks'2 offset acc
   findChunks'2 offset acc = do

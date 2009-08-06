@@ -162,7 +162,7 @@ splitVector n _vec | n <= 0 = error $ "Cannot demux " ++ show n ++ " channels."
 splitVector n vec = (channels, rm)
   where
   nInt = fromIntegral n
-  (first, rm) = SV.splitAt (SV.length vec - (SV.length vec `mod` nInt)) vec
+  (first, rm) = SV.splitAt (SV.length vec - (SV.length vec `rem` nInt)) vec
   channels = [SVB.unsafeCreate (SV.length first `div` nInt)
                (demuxCreateV a nInt vec) | a <- [0 .. nInt - 1]]
 
