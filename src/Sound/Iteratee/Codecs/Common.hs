@@ -25,6 +25,7 @@ import Data.Word
 import Data.Word.Word24
 import Data.Bits (shiftL)
 import System.IO
+import System.IO.Unsafe
 
 -- =====================================================
 -- useful type synonyms
@@ -95,8 +96,7 @@ unroller wSize = IterateeG step
                      return $ Just v'
 
 hostToLE :: Storable a => V a -> IO (V a)
-hostToLE vec = do
-  be' <- be
+hostToLE vec = let be' = unsafePerformIO be in do
   case be' of
     True -> let
               (fp, off, len) = VB.toForeignPtr vec
