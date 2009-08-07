@@ -185,7 +185,6 @@ unNormalize _bd a = let
 
 clip :: Double -> Double
 clip = max (-1) . min 1
-{-# INLINE clip #-}
 
 roundDouble :: Double -> Int
 roundDouble x = case (x >= 0.5) of
