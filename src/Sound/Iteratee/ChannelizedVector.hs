@@ -1,18 +1,23 @@
+{-# LANGUAGE MultiParamTypeClasses,
+             FlexibleContexts,
+             GeneralizedNewtypeDeriving #-}
+
 module Sound.Iteratee.ChannelizedVector (
-  ChannelizedVector
+  Channelized
+  ,ChannelizedVector
   ,numChannels
   ,interleave
   ,channelize
   ,numFrames
   ,index
-  ,getChannel
+  ,getChannelV
   ,getFrame
   ,take
   ,drop
   ,splitAt
   ,mapAll
   ,mapChannels
-  ,mapChannel
+  ,mapChannelV
   ,foldl
   ,foldl'
 )
@@ -25,6 +30,9 @@ import qualified Prelude as P
 import Sound.Iteratee.Base
 import qualified Data.StorableVector as SV
 import Foreign.Storable
+import qualified  Data.TypeLevel.Num as TN
+
+import qualified Data.Sequence as Seq
 
 import Control.Arrow
 import Control.Applicative
@@ -37,6 +45,32 @@ type ChannelIndex = Int
 -- helper function
 fI :: (Integral a, Num b) => a -> b
 fI = fromIntegral
+
+
+-- -------------------------------------------------------
+-- Support for channelized operations
+
+-- |Containers that are useful for holding multi-channel stuff
+class (Functor c, Applicative c) => Channelized c el where
+  getChannel :: (c el) -> ChannelIndex -> el
+  setChannel :: ChannelIndex -> el -> (c el) -> (c el)
+  mapChannel :: (el -> el) -> ChannelIndex -> (c el) -> (c el)
+
+instance Channelized ZipList el where
+  getChannel z i = getZipList z !! (fI i)
+  setChannel i el = ZipList . uncurry (++) . ((++ [el]) *** P.drop 1) .
+                        P.splitAt (fI i) . getZipList
+  mapChannel f i  = ZipList . uncurry (++) . second (\(x:xs) -> f x : xs) .
+                        P.splitAt (fI i) . getZipList
+
+
+newtype CSeq a = CSeq { getCSeq :: Seq.Seq a } deriving (Eq, Ord, Show, Functor)
+
+--instance Channelized Seq a where
+
+
+-- -------------------------------------------------------
+-- Support for channelized vectors
 
 -- |Create a channelized vector from an interleaved vector
 data ChannelizedVector a = CVec !NumChannels !(V a)
@@ -56,8 +90,8 @@ channelize n v = if (SV.length v `rem` (fI n) == 0) && (n > 0)
   else Nothing
 
 -- |Make a copy of the specified channel from a ChannelizedVector.
-getChannel :: Storable a => ChannelizedVector a -> ChannelIndex -> V a
-getChannel cv n = SV.sample (fI $ numFrames cv) (\i -> index cv (fI i) n)
+getChannelV :: Storable a => ChannelizedVector a -> ChannelIndex -> V a
+getChannelV cv n = SV.sample (fI $ numFrames cv) (\i -> index cv (fI i) n)
 
 -- |Return a frame of data
 getFrame :: Storable a => ChannelizedVector a -> FrameCount -> [a]
@@ -106,12 +140,12 @@ mapAll f (CVec n v) = CVec n $ SV.map f v
 
 -- |Map a list of functions, one per channel, over a ChannelizedVector.
 -- O(n)
-mapChannels :: Storable a => [(a -> a)]
+mapChannels :: (Channelized c (a -> a), Storable a) => c (a -> a)
   -> ChannelizedVector a
   -> ChannelizedVector a
 mapChannels fs (CVec nc v) = CVec nc $ SV.mapIndexed f v
   where
-    f i = fs !! (i `rem` (fI nc))
+    f i = fs `getChannel` (fI i `rem` fI nc)
 
 {- --I'd like to test this version, but mapIndexed may be a better choice.
 mapChannels fs cv@(CVec n v) = CVec n $
@@ -123,11 +157,11 @@ mapChannels fs cv@(CVec n v) = CVec n $
 
 -- |Map a function over one channel of a ChannelizedVector.
 -- O(n), where n is the total length of the ChannelizedVector.
-mapChannel :: Storable a => (a -> a)
+mapChannelV :: Storable a => (a -> a)
   -> ChannelIndex
   -> ChannelizedVector a
   -> ChannelizedVector a
-mapChannel f n (CVec nc v) = CVec nc $ SV.mapIndexed f' v
+mapChannelV f n (CVec nc v) = CVec nc $ SV.mapIndexed f' v
   where
     f' i = if (i `rem` (fI nc)) == fI n then f else id
 
@@ -145,19 +179,54 @@ foldl fs i0s (CVec nc v0)
 
 -- In addition to the applicative version, I could also try a mapAccum
 -- implementation, or a lower-level version.
+
+foldl' :: (Channelized c (PairS (a -> b -> a) a),
+           Channelized c (a -> b -> a),
+           Channelized c a,
+           Storable b) =>
+  c (a -> b -> a)
+  -> c a
+  -> ChannelizedVector b
+  -> c a
+foldl' fs i0s (CVec nc v0)
+  | nc == 1 = setChannel 0 (SV.foldl' (getChannel fs 0) (getChannel i0s 0) v0)
+                         i0s
+foldl' fs i0s (CVec nc v0) = fmap sndS . sndS $ SV.foldl' f acc0 v0
+  where
+    acc0 = PairS 0 (PairS <$> fs <*> i0s)
+    f (PairS n cPair) b = let newacc = pApply (getChannel cPair n) b
+                              n' = n + 1 `rem` (fI nc)
+                          in PairS n'
+                               (newacc `seq` mapChannel
+                                 (flip setSnd newacc) n cPair)
+
+{-
 -- This isn't good.  Try the StorableVector fold where the function rotates
 -- through the functions and accumulators.
-
-foldl' :: Storable b => [(a -> b -> a)]
-  -> [a]
-  -> ChannelizedVector b
-  -> [a]
 foldl' fs i0s (CVec nc v0)
   | nc == 1 = [SV.foldl' (head fs) (head i0s) v0]
   | otherwise = fmap snd $ SV.foldl' f (P.take (fI nc) $ P.zip fs i0s) v0
   where
     f ((f1, acc):accs) b = let newacc = f1 acc b in newacc `seq` accs ++ [(f1, newacc)]
+-}
+
+-- A strict pair type
+data PairS a b = PairS !a !b
+
+fstS :: PairS a b -> a
+fstS (PairS a _) = a
+
+sndS :: PairS a b -> b
+sndS (PairS _ b) = b
+
+pApply :: PairS (b -> c) b -> c
+pApply (PairS f b) = f b
+
+setSnd :: PairS a b -> b -> PairS a b
+setSnd (PairS a _) b' = PairS a b'
 
 -- |We need an NFData instance for ZipList.
+{-
 instance NFData b => NFData (ZipList b) where
   rnf = rnf . getZipList
+-}
