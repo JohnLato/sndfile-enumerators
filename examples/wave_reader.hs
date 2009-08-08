@@ -6,11 +6,13 @@ module Main where
 import Prelude as P
 
 import Data.Iteratee
-import Sound.Iteratee.Codecs.Wave
+import Sound.Iteratee as CV
 import qualified Data.StorableVector as SV
 import qualified Data.IntMap as IM
 import Data.Word (Word8)
+import Data.List (transpose)
 import Control.Monad.Trans
+import Control.Parallel.Strategies
 import System
 
 type V = SV.Vector
@@ -36,22 +38,25 @@ test Nothing = lift $ putStrLn "No dictionary"
 test (Just dict) = do
   fmtm <- dictReadFirstFormat dict
   lift . putStrLn $ show fmtm
-  maxm <- dictProcessData 0 dict max_iter
-  --maxm <- dictProcessData 0 dict max2
-  lift . putStrLn $ show maxm
+  case fmtm of
+    Just fmt -> do
+      maxm <- dictProcessData 0 dict . joinI . deMux fmt $ max_iter
+      lift . putStrLn $ show maxm
+    Nothing -> liftIO $ print "no format"
   return ()
 
 -- |This version is faster, but lower-level
-max_iter :: IterateeG V Double IO Double
-max_iter = m' 0
+max_iter :: IterateeG [] (ChannelizedVector Double) IO [Double]
+max_iter = m' (repeat 0)
   where
   m' acc = IterateeG (step acc)
-  step acc (Chunk xs) | SV.null xs = return $ Cont (m' acc) Nothing
-  step acc (Chunk xs) = return $ Cont
-                        (m' $! SV.foldl' (flip (max . abs)) acc xs)
-                        Nothing
+  step acc (Chunk []) = return $ Cont (m' acc) Nothing
+  step acc (Chunk xs) = return $ Cont (m' $! newacc) Nothing
+    where
+      newacc = (map (P.foldl1 f) . transpose . map (CV.foldl' (repeat f) acc) $ xs)
   step acc str = return $ Done acc str
+  f = flip (max . abs)
 
 -- |This version is slower, but high-level and easier to understand.
 max2 :: IterateeG V Double IO Double
-max2 = foldl' (flip (max . abs)) 0
+max2 = Data.Iteratee.foldl' (flip (max . abs)) 0

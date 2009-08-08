@@ -14,11 +14,7 @@ module Sound.Iteratee.Base (
   BitDepth,
   FrameCount,
   -- ** File Format Types
-  SupportedFileFormat (..),
-  -- * Functions
-  -- ** Multichannel support functions
-  mux,
-  deMux
+  SupportedFileFormat (..)
 )
 
 where
@@ -26,11 +22,6 @@ where
 import Prelude as P
 import Sound.Iteratee.Instances()
 
-import Data.Iteratee
-import Data.List
-import Data.Monoid
-import qualified Data.StorableVector as SV
-import qualified Data.StorableVector.Base as SVB
 import Control.Monad.Trans.State
 import Control.Parallel.Strategies
 import System.IO
@@ -73,81 +64,3 @@ type FrameCount  = Integer
 
 data SupportedBitDepths = Any | Supported [BitDepth]
 
--- -------------------------
--- Multichannel support functions
-
--- internal type synonym
-type V = SV.Vector
-
--- | An enumerator that creates an interleaved stream from a channelized
--- stream.
-mux :: Monad m => AudioFormat -> EnumeratorN [] (V Double) V Double m a
-mux = convStream . muxFunc . numberOfChannels
-
--- |An Iteratee to be used in convStream to mux a channelized stream.
-muxFunc :: Monad m =>
-           NumChannels ->
-           IterateeG [] (V Double) m (Maybe (V Double))
-muxFunc 1 = noIter -- we can take a shortcut for mono functions
-  where
-  noIter = IterateeG step
-  step (Chunk [])     = return $ Cont noIter Nothing
-  -- the tail should always be the empty list here, but it's handled the
-  -- same in either case so no need to verify.
-  step (Chunk (v:vs)) = return $ Done (Just $ v) (Chunk vs)
-  step str        = return $ Done Nothing str
-muxFunc n = IterateeG step
-  where
-  nInt = fromIntegral n
-  step (Chunk [])   = return $ Cont (IterateeG step) Nothing
-  step (Chunk vs) | P.length vs >= nInt = let (hs, r) = splitAt nInt vs in
-                      return $ Done (Just $ interleaveVectors hs) (Chunk r)
-  step c@(Chunk _)  = return $ Cont (step' c) Nothing
-  step str          = return $ Done Nothing str
-  step' i0          = IterateeG (step . mappend i0)
-
--- | Interleave a list of vectors (channel streams) into one stream.
---   All vectors should have the same length, otherwise the results
---   may be inconsistent.
-interleaveVectors :: [V Double] -> V Double
-interleaveVectors cs = fst . SV.unfoldrN tLen unfolder $ cs
-  where
-    tLen = sum . map SV.length $ cs
-    unfolder []     = Nothing
-    unfolder (v:vs) = SV.viewL v >>= \(h, rm) -> Just (h, vs ++ [rm])
-
--- | A stream enumerator to convert an interleaved audio stream to a 
--- channelized stream.
-deMux :: Monad m => AudioFormat -> EnumeratorN V Double [] (V Double) m a
-deMux = convStream . deMuxFunc . numberOfChannels
-
--- | An iteratee to convert an interleaved stream to a channelized stream.
-deMuxFunc :: Monad m =>
-             NumChannels ->
-             IterateeG V Double m (Maybe ([V Double]))
-deMuxFunc 1 = noIter
-  where
-  noIter = IterateeG step
-  step (Chunk vs) | SV.null vs = return $ Cont noIter Nothing
-  step (Chunk vs) = return $ Done (Just [vs]) (Chunk mempty)
-  step str        = return $ Done Nothing str
-deMuxFunc n = IterateeG step
-  where
-  n' = fromIntegral n
-  step c@(Chunk v) | SV.length v < n' = return $ Cont (step' c) Nothing
-  step (Chunk v) = let (vecs, rm) = channelizeVector n v in
-                   return $ Done (Just vecs) $ Chunk rm
-  step str = return $ Done Nothing str
-  step' i0 = IterateeG (step . mappend i0)
-
--- | Split an interleaved vector to a list of channelized vectors.
--- The second half of the tuple is any data remaining after splitting
--- to channels.
-channelizeVector :: NumChannels -> V Double -> ([V Double], V Double)
-channelizeVector n v = (splits, rm)
-  where
-  rm = SV.drop (fromIntegral n * pLen) v
-  pLen = SV.length v `div` fromIntegral n
-  hop = fromIntegral $ n - 1
-  splits = map (fst . SV.unfoldrN pLen unfolder . flip SV.drop v) [0 .. hop]
-  unfolder = fmap (\(a, b) -> (a, SV.drop hop b)) . SV.viewL

@@ -38,6 +38,8 @@ Library
                         UndecidableInstances
  exposed-modules:       Sound.Iteratee
                         Sound.Iteratee.Base
+                        Sound.Iteratee.Channelize
+                        Sound.Iteratee.ChannelizedVector
                         Sound.Iteratee.Codecs
                         Sound.Iteratee.Codecs.Wave
                         Sound.Iteratee.Codecs.Raw
