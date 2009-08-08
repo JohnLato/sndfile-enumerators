@@ -20,6 +20,7 @@ module Sound.Iteratee.ChannelizedVector (
 where
 
 import Prelude hiding (take, drop, splitAt, foldl)
+import qualified Prelude as P
 
 import Sound.Iteratee.Base
 import qualified Data.StorableVector as SV
@@ -147,17 +148,15 @@ foldl fs i0s (CVec nc v0) = go (ZipList i0s) v0
 -- This isn't good.  Try the StorableVector fold where the function rotates
 -- through the functions and accumulators.
 
-foldl' :: (NFData b, Storable a) => [(b -> a -> b)]
-  -> [b]
-  -> ChannelizedVector a
-  -> [b]
-foldl' fs i0s (CVec nc v0) = go (ZipList i0s) v0
+foldl' :: Storable b => [(a -> b -> a)]
+  -> [a]
+  -> ChannelizedVector b
+  -> [a]
+foldl' fs i0s (CVec nc v0)
+  | nc == 1 = [SV.foldl' (head fs) (head i0s) v0]
+  | otherwise = fmap snd $ SV.foldl' f (P.take (fI nc) $ P.zip fs i0s) v0
   where
-    go acc v | SV.null v = getZipList acc
-    go acc v = let (this, next) = SV.splitAt (fI nc) v
-                   curr = (ZipList fs <*> acc <*> (ZipList $ SV.unpack this))
-                          `using` rnf
-               in curr `seq` go curr next
+    f ((f1, acc):accs) b = let newacc = f1 acc b in newacc `seq` accs ++ [(f1, newacc)]
 
 -- |We need an NFData instance for ZipList.
 instance NFData b => NFData (ZipList b) where
