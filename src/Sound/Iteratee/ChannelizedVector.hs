@@ -50,6 +50,7 @@ interleave (CVec _ v) = v
 -- |Create a ChannelizedVector.  The vector length
 -- must be a multiple of the number of channels requested.
 channelize :: NumChannels -> V a -> Maybe (ChannelizedVector a)
+channelize 1 v = Just (CVec 1 v)
 channelize n v = if (SV.length v `rem` (fI n) == 0) && (n > 0)
   then Just (CVec n v)
   else Nothing
@@ -136,12 +137,11 @@ mapChannel f n (CVec nc v) = CVec nc $ SV.mapIndexed f' v
 
 -- |Perform a fold over each channel
 foldl :: Storable a => [(b -> a -> b)] -> [b] -> ChannelizedVector a -> [b]
-foldl fs i0s (CVec nc v0) = go (ZipList i0s) v0
+foldl fs i0s (CVec nc v0)
+  | nc == 1 = [SV.foldl (head fs) (head i0s) v0]
+  | otherwise = fmap snd $ SV.foldl f (P.take (fI nc) $ P.zip fs i0s) v0
   where
-    go acc v | SV.null v = getZipList acc
-    go acc v = let (this, next) = SV.splitAt (fI nc) v
-                   curr = ZipList fs <*> acc <*> (ZipList $ SV.unpack this)
-               in go curr next
+    f ((f1, acc):accs) b = let newacc = f1 acc b in accs ++ [(f1, newacc)]
 
 -- In addition to the applicative version, I could also try a mapAccum
 -- implementation, or a lower-level version.
