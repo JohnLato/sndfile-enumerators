@@ -78,7 +78,7 @@ instance forall s el. (T.Nat s) => Channelized s ZipListS el where
                         P.splitAt (fI i) . getZipListS
   fromList        = ZipListS . P.take (T.toInt (undefined :: s))
 
-data Pair s a = Pair a a deriving (Eq, Show)
+data Pair s a = Pair !a !a deriving (Eq, Show)
 
 instance Functor (Pair s) where
   fmap f (Pair a1 a2) = Pair (f a1) (f a2)
@@ -238,7 +238,7 @@ foldl fs i0s (CVec nc v0)
     f ((f1, acc):accs) b = let newacc = f1 acc b in accs ++ [(f1, newacc)]
 
 -- In addition to the applicative version, I could also try a mapAccum
--- implementation, or a lower-level version.
+-- implementation.
 
 foldl' :: (Channelized s c (a -> b -> a),
            Channelized s c a,
@@ -259,22 +259,13 @@ foldl' fs i0s (CVec nc v0) = sndS $ SV.foldl' f acc0 v0
                        in PairS (succ' n) $ mapChannel f' n is
 {-# INLINE foldl' #-}
 
--- A strict pair type
+-- A strict pair type, only used internally
 data PairS a b = PairS !a !b
-
-fstS :: PairS a b -> a
-fstS (PairS a _) = a
 
 sndS :: PairS a b -> b
 sndS (PairS _ b) = b
 
-pApply :: PairS (b -> c) b -> c
-pApply (PairS f b) = f b
-
-setSnd :: PairS a b -> b -> PairS a b
-setSnd (PairS a _) b' = PairS a b'
-
--- Helper function for calculating channels
+-- Helper function for calculating channel indices
 normChn :: NumChannels -> ChannelIndex -> ChannelIndex
 normChn 1 _  = 0
 normChn nc i = i `rem` (fI nc)
