@@ -58,6 +58,7 @@ class (T.Nat s) => Channelized s c el where
   getChannel  :: (c s el) -> ChannelIndex -> el
   setChannel  :: ChannelIndex -> el -> (c s el) -> (c s el)
   mapChannel  :: (el -> el) -> ChannelIndex -> (c s el) -> (c s el)
+  fromList    :: [el] -> (c s el)
 
 newtype T.Nat s => ZipListS s a = ZipListS {getZipListS :: [a]}
   deriving (Eq, Functor, Show)
@@ -69,12 +70,13 @@ instance T.Nat s => Applicative (ZipListS s) where
 pureFn :: forall s a. (T.Nat s) => a -> ZipListS s a
 pureFn = ZipListS . replicate (T.toInt (undefined :: s))
 
-instance T.Nat s => Channelized s ZipListS el where
+instance forall s el. (T.Nat s) => Channelized s ZipListS el where
   getChannel z i = getZipListS z !! (fI i)
   setChannel i el = ZipListS . uncurry (++) . ((++ [el]) *** P.drop 1) .
                         P.splitAt (fI i) . getZipListS
   mapChannel f i  = ZipListS . uncurry (++) . second (\(x:xs) -> f x : xs) .
                         P.splitAt (fI i) . getZipListS
+  fromList        = ZipListS . P.take (T.toInt (undefined :: s))
 
 data Pair s a = Pair a a deriving (Eq, Show)
 
@@ -100,6 +102,9 @@ instance Channelized T.D2 Pair el where
   mapChannel f 1 (Pair a b) = let b' = f b in b' `seq` Pair a b'
   mapChannel _ _ _          = error "setChannel Pair invalid index"
   {-# INLINE mapChannel #-}
+
+  fromList (a:b:_) = Pair a b
+  {-# INLINE fromList #-}
 
 newtype T.Nat s => Mono s a = Mono a deriving (Eq, Show)
 
@@ -158,8 +163,7 @@ rawPosition nc fc c = (fI nc * fI fc) + (fI c)
 
 -- |Calculate the number of frames in a ChannelizedVector
 numFrames :: ChannelizedVector a -> FrameCount
-numFrames = fI . uncurry (*) .
-            (fI . numChannels &&& (SV.length . interleave))
+numFrames (CVec nc v) = fI (SV.length v) `div` nc
 
 -- |Look up a value in a ChannelizedVector by frame and channel.
 index :: (Storable a) => ChannelizedVector a -> FrameCount -> ChannelIndex -> a
