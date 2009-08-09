@@ -1,9 +1,15 @@
 {-# LANGUAGE MultiParamTypeClasses,
+             FlexibleInstances,
              FlexibleContexts,
-             GeneralizedNewtypeDeriving #-}
+             GeneralizedNewtypeDeriving,
+             ScopedTypeVariables #-}
 
 module Sound.Iteratee.ChannelizedVector (
-  Channelized
+  Channelized (..)
+  ,ZipListS (..)
+  ,Mono (..)
+  ,Pair (..)
+  ,ISMap (..)
   ,ChannelizedVector
   ,numChannels
   ,interleave
@@ -30,13 +36,11 @@ import qualified Prelude as P
 import Sound.Iteratee.Base
 import qualified Data.StorableVector as SV
 import Foreign.Storable
-import qualified  Data.TypeLevel.Num as TN
-
-import qualified Data.Sequence as Seq
+import qualified Data.TypeLevel.Num as T
+import qualified Data.IntMap as IM
 
 import Control.Arrow
 import Control.Applicative
-import Control.Parallel.Strategies
 
 type V = SV.Vector
 
@@ -46,27 +50,94 @@ type ChannelIndex = Int
 fI :: (Integral a, Num b) => a -> b
 fI = fromIntegral
 
-
 -- -------------------------------------------------------
 -- Support for channelized operations
 
--- |Containers that are useful for holding multi-channel stuff
-class (Functor c, Applicative c) => Channelized c el where
-  getChannel :: (c el) -> ChannelIndex -> el
-  setChannel :: ChannelIndex -> el -> (c el) -> (c el)
-  mapChannel :: (el -> el) -> ChannelIndex -> (c el) -> (c el)
+-- |Containers that are useful for holding multi-channel stuff.
+-- N.B. for good performance, mapChannel should be strict.
+class (T.Nat s) => Channelized s c el where
+  getChannel  :: (c s el) -> ChannelIndex -> el
+  setChannel  :: ChannelIndex -> el -> (c s el) -> (c s el)
+  mapChannel  :: (el -> el) -> ChannelIndex -> (c s el) -> (c s el)
 
-instance Channelized ZipList el where
-  getChannel z i = getZipList z !! (fI i)
-  setChannel i el = ZipList . uncurry (++) . ((++ [el]) *** P.drop 1) .
-                        P.splitAt (fI i) . getZipList
-  mapChannel f i  = ZipList . uncurry (++) . second (\(x:xs) -> f x : xs) .
-                        P.splitAt (fI i) . getZipList
+newtype T.Nat s => ZipListS s a = ZipListS {getZipListS :: [a]}
+  deriving (Eq, Functor, Show)
 
+instance T.Nat s => Applicative (ZipListS s) where
+  pure    = pureFn
+  a <*> b = ZipListS $ zipWith ($) (getZipListS a) (getZipListS b)
 
-newtype CSeq a = CSeq { getCSeq :: Seq.Seq a } deriving (Eq, Ord, Show, Functor)
+pureFn :: forall s a. (T.Nat s) => a -> ZipListS s a
+pureFn = ZipListS . replicate (T.toInt (undefined :: s))
 
---instance Channelized Seq a where
+instance T.Nat s => Channelized s ZipListS el where
+  getChannel z i = getZipListS z !! (fI i)
+  setChannel i el = ZipListS . uncurry (++) . ((++ [el]) *** P.drop 1) .
+                        P.splitAt (fI i) . getZipListS
+  mapChannel f i  = ZipListS . uncurry (++) . second (\(x:xs) -> f x : xs) .
+                        P.splitAt (fI i) . getZipListS
+
+data Pair s a = Pair a a deriving (Eq, Show)
+
+instance Functor (Pair s) where
+  fmap f (Pair a1 a2) = Pair (f a1) (f a2)
+
+instance Applicative (Pair T.D2) where
+  pure a = Pair a a
+  (Pair a1 a2) <*> (Pair b1 b2) = Pair (a1 b1) (a2 b2) 
+
+instance Channelized T.D2 Pair el where
+  getChannel (Pair a _) 0 = a
+  getChannel (Pair _ b) 1 = b
+  getChannel _          _ = error "getChannel Pair invalid index"
+  {-# INLINE getChannel #-}
+
+  setChannel 0 a (Pair _ b) = Pair a b
+  setChannel 1 b (Pair a _) = Pair a b
+  setChannel _ _ _          = error "setChannel Pair invalid index"
+  {-# INLINE setChannel #-}
+
+  mapChannel f 0 (Pair a b) = let a' = f a in a' `seq` Pair a' b
+  mapChannel f 1 (Pair a b) = let b' = f b in b' `seq` Pair a b'
+  mapChannel _ _ _          = error "setChannel Pair invalid index"
+  {-# INLINE mapChannel #-}
+
+newtype T.Nat s => Mono s a = Mono a deriving (Eq, Show)
+
+instance Functor (Mono s) where
+  fmap f (Mono a) = Mono (f a)
+
+instance Applicative (Mono T.D1) where
+  pure a = Mono a
+  (Mono a) <*> (Mono b) = Mono (a b)
+
+instance Channelized T.D1 Mono el where
+  getChannel (Mono a) 0 = a
+  getChannel _         _ = error "getChannel Mono invalid index"
+  {-# INLINE getChannel #-}
+
+  setChannel 0 a (Mono _) = Mono a
+  setChannel _ _ _          = error "setChannel Mono invalid index"
+  {-# INLINE setChannel #-}
+
+  mapChannel f 0 (Mono a) = Mono (f a)
+  mapChannel _ n _          = error $ "mapChannel Mono invalid index " ++ show n
+  {-# INLINE mapChannel #-}
+
+newtype ISMap s a = ISMap { getIntMap :: IM.IntMap a } deriving
+  (Eq, Show, Functor)
+
+instance T.Nat s => Applicative (ISMap s) where
+  pure = pureISM
+  a <*> b = ISMap . IM.mapWithKey ((IM.!) (getIntMap a)) . getIntMap $ b
+
+pureISM :: forall s a. (T.Nat s) => a -> ISMap s a
+pureISM = ISMap . IM.fromList . zip [0 .. (T.toNum (undefined :: s))] . repeat
+
+instance (T.Nat s) => Channelized s ISMap el where
+  getChannel im ix    = getIntMap im IM.! fI ix
+  setChannel ix el im = ISMap . IM.insert (fI ix) el $ getIntMap im
+  mapChannel f ix im  = ISMap . IM.adjust f (fI ix) $ getIntMap im
 
 
 -- -------------------------------------------------------
@@ -140,17 +211,17 @@ mapAll f (CVec n v) = CVec n $ SV.map f v
 
 -- |Map a list of functions, one per channel, over a ChannelizedVector.
 -- O(n)
-mapChannels :: (Channelized c (a -> a), Storable a) => c (a -> a)
+mapChannels :: (Channelized s c (a -> a), Storable a) => c s (a -> a)
   -> ChannelizedVector a
   -> ChannelizedVector a
 mapChannels fs (CVec nc v) = CVec nc $ SV.mapIndexed f v
   where
-    f i = fs `getChannel` (fI i `rem` fI nc)
+    f i = fs `getChannel` (normChn nc i)
 
 {- --I'd like to test this version, but mapIndexed may be a better choice.
-mapChannels fs cv@(CVec n v) = CVec n $
+mapChannels fs cv@(CVec nc v) = CVec nc $
   SV.sample (fI $ numFrames cv) (\i ->
-    f (i `rem` (fI n)) (SV.index v i))
+    f (normChn nc i) (SV.index v i))
   where
     f n = fs !! n
 -}
@@ -163,7 +234,7 @@ mapChannelV :: Storable a => (a -> a)
   -> ChannelizedVector a
 mapChannelV f n (CVec nc v) = CVec nc $ SV.mapIndexed f' v
   where
-    f' i = if (i `rem` (fI nc)) == fI n then f else id
+    f' i = if (normChn nc i) == fI n then f else id
 
 -- ----------------
 -- folds
@@ -180,35 +251,24 @@ foldl fs i0s (CVec nc v0)
 -- In addition to the applicative version, I could also try a mapAccum
 -- implementation, or a lower-level version.
 
-foldl' :: (Channelized c (PairS (a -> b -> a) a),
-           Channelized c (a -> b -> a),
-           Channelized c a,
+foldl' :: (Channelized s c (a -> b -> a),
+           Channelized s c a,
            Storable b) =>
-  c (a -> b -> a)
-  -> c a
+  c s (a -> b -> a)
+  -> c s a
   -> ChannelizedVector b
-  -> c a
+  -> c s a
 foldl' fs i0s (CVec nc v0)
   | nc == 1 = setChannel 0 (SV.foldl' (getChannel fs 0) (getChannel i0s 0) v0)
                          i0s
-foldl' fs i0s (CVec nc v0) = fmap sndS . sndS $ SV.foldl' f acc0 v0
+foldl' fs i0s (CVec nc v0) = sndS $ SV.foldl' f acc0 v0
   where
-    acc0 = PairS 0 (PairS <$> fs <*> i0s)
-    f (PairS n cPair) b = let newacc = pApply (getChannel cPair n) b
-                              n' = n + 1 `rem` (fI nc)
-                          in PairS n'
-                               (newacc `seq` mapChannel
-                                 (flip setSnd newacc) n cPair)
-
-{-
--- This isn't good.  Try the StorableVector fold where the function rotates
--- through the functions and accumulators.
-foldl' fs i0s (CVec nc v0)
-  | nc == 1 = [SV.foldl' (head fs) (head i0s) v0]
-  | otherwise = fmap snd $ SV.foldl' f (P.take (fI nc) $ P.zip fs i0s) v0
-  where
-    f ((f1, acc):accs) b = let newacc = f1 acc b in newacc `seq` accs ++ [(f1, newacc)]
--}
+    acc0 = PairS 0 i0s
+    getF n = getChannel fs n
+    succ' n = normChn nc (n + 1)
+    f (PairS n is) b = let f' = flip (getF n) b
+                       in PairS (succ' n) $ mapChannel f' n is
+{-# INLINE foldl' #-}
 
 -- A strict pair type
 data PairS a b = PairS !a !b
@@ -225,8 +285,7 @@ pApply (PairS f b) = f b
 setSnd :: PairS a b -> b -> PairS a b
 setSnd (PairS a _) b' = PairS a b'
 
--- |We need an NFData instance for ZipList.
-{-
-instance NFData b => NFData (ZipList b) where
-  rnf = rnf . getZipList
--}
+-- Helper function for calculating channels
+normChn :: NumChannels -> ChannelIndex -> ChannelIndex
+normChn 1 _  = 0
+normChn nc i = i `rem` (fI nc)
