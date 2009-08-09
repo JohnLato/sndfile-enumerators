@@ -9,7 +9,6 @@ module Sound.Iteratee.ChannelizedVector (
   ,ZipListS (..)
   ,Mono (..)
   ,Pair (..)
-  ,ISMap (..)
   ,ChannelizedVector
   ,numChannels
   ,interleave
@@ -124,21 +123,7 @@ instance Channelized T.D1 Mono el where
   mapChannel _ n _          = error $ "mapChannel Mono invalid index " ++ show n
   {-# INLINE mapChannel #-}
 
-newtype ISMap s a = ISMap { getIntMap :: IM.IntMap a } deriving
-  (Eq, Show, Functor)
-
-instance T.Nat s => Applicative (ISMap s) where
-  pure = pureISM
-  a <*> b = ISMap . IM.mapWithKey ((IM.!) (getIntMap a)) . getIntMap $ b
-
-pureISM :: forall s a. (T.Nat s) => a -> ISMap s a
-pureISM = ISMap . IM.fromList . zip [0 .. (T.toNum (undefined :: s))] . repeat
-
-instance (T.Nat s) => Channelized s ISMap el where
-  getChannel im ix    = getIntMap im IM.! fI ix
-  setChannel ix el im = ISMap . IM.insert (fI ix) el $ getIntMap im
-  mapChannel f ix im  = ISMap . IM.adjust f (fI ix) $ getIntMap im
-
+  fromList (a:_) = Mono a
 
 -- -------------------------------------------------------
 -- Support for channelized vectors
