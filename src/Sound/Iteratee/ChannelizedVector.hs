@@ -1,6 +1,7 @@
 {-# LANGUAGE MultiParamTypeClasses,
              FlexibleInstances,
              FlexibleContexts,
+             BangPatterns,
              GeneralizedNewtypeDeriving,
              ScopedTypeVariables #-}
 
@@ -34,12 +35,18 @@ import qualified Prelude as P
 
 import Sound.Iteratee.Base
 import qualified Data.StorableVector as SV
+import qualified Data.StorableVector.Base as SVB
 import Foreign.Storable
 import qualified Data.TypeLevel.Num as T
 import qualified Data.IntMap as IM
 
 import Control.Arrow
 import Control.Applicative
+
+import System.IO.Unsafe
+import Foreign.ForeignPtr
+import Foreign.Ptr
+import Foreign.Marshal.Array
 
 type V = SV.Vector
 
@@ -98,8 +105,8 @@ instance Channelized T.D2 Pair el where
   setChannel _ _ _          = error "setChannel Pair invalid index"
   {-# INLINE setChannel #-}
 
-  mapChannel f 0 (Pair a b) = let a' = f a in a' `seq` Pair a' b
-  mapChannel f 1 (Pair a b) = let b' = f b in b' `seq` Pair a b'
+  mapChannel f 0 (Pair a b) = Pair (f a) b
+  mapChannel f 1 (Pair a b) = Pair a     (f b)
   mapChannel _ _ _          = error "setChannel Pair invalid index"
   {-# INLINE mapChannel #-}
 
@@ -237,11 +244,10 @@ foldl fs i0s (CVec nc v0)
   where
     f ((f1, acc):accs) b = let newacc = f1 acc b in accs ++ [(f1, newacc)]
 
--- In addition to the applicative version, I could also try a mapAccum
--- implementation.
-
 foldl' :: (Channelized s c (a -> b -> a),
            Channelized s c a,
+           Applicative (c s),
+           Channelized s c (SV.Vector b),
            Storable b) =>
   c s (a -> b -> a)
   -> c s a
@@ -250,13 +256,8 @@ foldl' :: (Channelized s c (a -> b -> a),
 foldl' fs i0s (CVec nc v0)
   | nc == 1 = setChannel 0 (SV.foldl' (getChannel fs 0) (getChannel i0s 0) v0)
                          i0s
-foldl' fs i0s (CVec nc v0) = sndS $ SV.foldl' f acc0 v0
-  where
-    acc0 = PairS 0 i0s
-    getF n = getChannel fs n
-    succ' n = normChn nc (n + 1)
-    f (PairS n is) b = let f' = flip (getF n) b
-                       in PairS (succ' n) $ mapChannel f' n is
+foldl' fs i0s (CVec nc v0) = hopfoldl' <$> fs <*> i0s <*> pure (fI nc) <*>
+                             fromList (map (flip SV.drop v0) [0 .. (fI $ nc-1)])
 {-# INLINE foldl' #-}
 
 -- A strict pair type, only used internally
@@ -269,3 +270,13 @@ sndS (PairS _ b) = b
 normChn :: NumChannels -> ChannelIndex -> ChannelIndex
 normChn 1 _  = 0
 normChn nc i = i `rem` (fI nc)
+
+hopfoldl' :: (Storable a) => (b -> a -> b) -> b -> Int -> SV.Vector a -> b
+hopfoldl' f v hop (SVB.SV x s l) =
+   unsafePerformIO $ withForeignPtr x $ \ptr ->
+      let sptr = ptr `advancePtr` s
+          go pos p z = if pos >= l
+                     then return z
+                     else z `seq` (peek p >>= go (pos + hop) (p `advancePtr` hop) . f z)
+      in  go 0 sptr v
+{-# INLINE hopfoldl' #-}

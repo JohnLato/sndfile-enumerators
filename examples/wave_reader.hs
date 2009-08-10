@@ -53,13 +53,11 @@ max_iter = m' (pure 0)
   where
   m' acc = IterateeG (step acc)
   step acc (Chunk []) = return $ Cont (m' acc) Nothing
+  step acc (Chunk (x:[])) = return $ Cont (m' $! newacc) Nothing
+    where newacc = CV.foldl' f acc x
   step acc (Chunk xs) = return $ Cont (m' $! newacc) Nothing
     where
       newacc = P.foldl1 outerF . map (CV.foldl' f acc) $ xs
   step acc str = return $ Done acc str
   f = pure $ flip (max . abs)
   outerF a b = f <*> a <*> b
-
--- |This version is slower, but high-level and easier to understand.
-max2 :: IterateeG V Double IO Double
-max2 = Data.Iteratee.foldl' (flip (max . abs)) 0
