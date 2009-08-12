@@ -18,6 +18,8 @@ module Sound.Iteratee.ChannelizedVector (
   ,ChannelizedVector
   -- ** Classes
   ,Channelized (..)
+  -- ** Other types
+  ,ChannelIndex
   -- * Functions
   -- ** Basic interface
   ,numChannels
@@ -40,6 +42,9 @@ module Sound.Iteratee.ChannelizedVector (
   -- ** Folds
   ,foldl
   ,foldl'
+  -- * Enumerator support
+  ,interleaveStream
+  ,channelizeStream
 )
 
 where
@@ -48,17 +53,20 @@ import Prelude hiding (take, drop, splitAt, foldl)
 import qualified Prelude as P
 
 import Sound.Iteratee.Base
+import Data.Iteratee (IterateeG (..), EnumeratorN, IterGV (..), StreamG (..))
+import qualified Data.Iteratee as I
+import qualified Data.TypeLevel.Num as T
 import qualified Data.StorableVector as SV
 import qualified Data.StorableVector.Base as SVB
-import Foreign.Storable
-import qualified Data.TypeLevel.Num as T
 
 import Control.Arrow
 import Control.Applicative
+import Data.Monoid
 
 import System.IO.Unsafe
 import Foreign.ForeignPtr
 import Foreign.Marshal.Array
+import Foreign.Storable
 
 type V = SV.Vector
 
@@ -353,7 +361,7 @@ hopfoldl f v hop (SVB.SV x s l) =
       let sptr = ptr `advancePtr` s
           go pos p z = if pos >= l
                      then return z
-                     else (peek p >>= go (pos + hop)
+                     else (Foreign.Storable.peek p >>= go (pos + hop)
                           (p `advancePtr` hop) . f z)
       in  go 0 sptr v
 {-# INLINE hopfoldl #-}
@@ -364,8 +372,58 @@ hopfoldl' f v hop (SVB.SV x s l) =
       let sptr = ptr `advancePtr` s
           go pos p z = if pos >= l
                      then return z
-                     else z `seq` (peek p >>= go (pos + hop)
+                     else z `seq` (Foreign.Storable.peek p >>= go (pos + hop)
                           (p `advancePtr` hop) . f z)
       in  go 0 sptr v
 {-# INLINE hopfoldl' #-}
 
+-- ----------------------------------------
+-- Enumerator support.
+
+-- | An enumerator that creates an interleaved stream from a channelized
+-- stream.
+interleaveStream :: (T.Nat s, Monad m) =>
+  EnumeratorN [] (ChannelizedVector s Double) V Double m a
+interleaveStream = I.convStream muxFunc
+
+-- |An Iteratee to be used in convStream to mux a channelized stream.
+muxFunc :: (T.Nat s, Monad m) =>
+           IterateeG [] (ChannelizedVector s Double) m
+                        (Maybe (V Double))
+muxFunc = IterateeG step
+  where
+  step (Chunk [])     = return $ Cont (IterateeG step) Nothing
+  step (Chunk (v:vs)) = return $ Done (Just $ interleave v) (Chunk vs)
+  step str            = return $ Done Nothing str
+
+-- | A stream enumerator to convert an interleaved audio stream to a 
+-- channelized stream.
+channelizeStream :: (T.Nat s, Monad m) =>
+  s
+  -> EnumeratorN V Double [] (ChannelizedVector s Double) m a
+channelizeStream = I.convStream . deMuxFunc
+
+-- | An iteratee to convert an interleaved stream to a channelized stream.
+deMuxFunc :: (T.Nat s, Monad m) =>
+             s ->
+             IterateeG V Double m (Maybe ([ChannelizedVector s Double]))
+deMuxFunc n = IterateeG step
+  where
+  n' = T.toInt n
+  step c@(Chunk v) | SV.length v < n' = return $ Cont (step' c) Nothing
+  step (Chunk v) = let (vecs, rm) = channelizeVector n v in
+                   return $ Done (fmap (:[]) vecs) $ Chunk rm
+  step str = return $ Done Nothing str
+  step' i0 = IterateeG (step . mappend i0)
+
+-- | Split an interleaved vector to a list of channelized vectors.
+-- The second half of the tuple is any data remaining after splitting
+-- to channels.
+channelizeVector :: (T.Nat s) =>
+  s
+  -> V Double
+  -> (Maybe (ChannelizedVector s Double), V Double)
+channelizeVector n v = first (channelizeT n) $ SV.splitAt chanLen v
+  where
+    n' = T.toInt n
+    chanLen = SV.length v - (SV.length v `rem` n')
