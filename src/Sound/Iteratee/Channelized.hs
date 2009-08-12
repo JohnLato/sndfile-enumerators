@@ -8,7 +8,7 @@
              ScopedTypeVariables,
              Rank2Types #-}
 
-module Sound.Iteratee.ChannelizedVector (
+module Sound.Iteratee.Channelized (
   -- *Types
   -- ** Channelized type class instances
   ListVector
