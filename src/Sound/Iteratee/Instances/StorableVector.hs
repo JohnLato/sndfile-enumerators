@@ -7,6 +7,7 @@ module Sound.Iteratee.Instances.StorableVector (
 where
 
 import qualified Data.Iteratee.Base.StreamChunk as SC
+import Data.Iteratee.Base.LooseMap
 import qualified Data.StorableVector as SV
 import qualified Data.StorableVector.Base as SVBase
 import Data.Monoid
@@ -26,6 +27,7 @@ instance (Storable el) => LL.ListLike (SV.Vector el) el where
   dropWhile = SV.dropWhile
   fromList  = SV.pack
   toList    = SV.unpack
+  rigidMap  = SV.map
 
 instance (Storable el) => LL.FoldableLL (SV.Vector el) el where
   foldl     = SV.foldl
@@ -34,6 +36,9 @@ instance (Storable el) => LL.FoldableLL (SV.Vector el) el where
 instance (Storable el, LL.ListLike (SV.Vector el) el) =>
          SC.StreamChunk SV.Vector el where
   cMap      = vmap
+
+instance (Storable el, Storable el') => LooseMap SV.Vector el el' where
+  looseMap  = SV.map
 
 vmap :: (SC.StreamChunk s' el', Storable el) =>
         (el -> el') ->
@@ -44,15 +49,6 @@ vmap f xs = step xs
   step bs
     | SC.null bs = mempty
     | True       = f (SC.head bs) `SC.cons` step (SC.tail bs)
-
--- a specialized vmap for the RULE
-vmap' :: (Storable el, Storable el') =>
-         (el -> el') ->
-         SV.Vector el ->
-         SV.Vector el'
-vmap' = SV.map
-
-{-# RULES "svmap/map" forall s (f :: (Storable el') => el -> el'). vmap f s = vmap' f s #-}
 
 instance forall el.(Storable el) => SC.ReadableChunk SV.Vector el where
   readFromPtr p l =
