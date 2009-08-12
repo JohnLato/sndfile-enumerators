@@ -1,29 +1,43 @@
+-- |This module provides support for channelized vector operations.
+
 {-# LANGUAGE MultiParamTypeClasses,
              FlexibleInstances,
              FlexibleContexts,
              BangPatterns,
              GeneralizedNewtypeDeriving,
-             ScopedTypeVariables #-}
+             ScopedTypeVariables,
+             Rank2Types #-}
 
 module Sound.Iteratee.ChannelizedVector (
-  Channelized (..)
-  ,ZipListS (..)
+  -- *Types
+  -- ** Channelized type class instances
+  ListVector
   ,Mono (..)
-  ,Pair (..)
+  ,Stereo (..)
+  -- ** ChannelizedVector
   ,ChannelizedVector
+  -- ** Classes
+  ,Channelized (..)
+  -- * Functions
+  -- ** Basic interface
   ,numChannels
-  ,interleave
-  ,channelize
   ,numFrames
   ,index
   ,getChannelV
   ,getFrame
+  -- ** Conversion to/from Vector
+  ,interleave
+  ,channelize
+  ,channelizeT
+  -- ** List-list operations
   ,take
   ,drop
   ,splitAt
+  -- ** Maps
   ,mapAll
   ,mapChannels
   ,mapChannelV
+  -- ** Folds
   ,foldl
   ,foldl'
 )
@@ -38,14 +52,12 @@ import qualified Data.StorableVector as SV
 import qualified Data.StorableVector.Base as SVB
 import Foreign.Storable
 import qualified Data.TypeLevel.Num as T
-import qualified Data.IntMap as IM
 
 import Control.Arrow
 import Control.Applicative
 
 import System.IO.Unsafe
 import Foreign.ForeignPtr
-import Foreign.Ptr
 import Foreign.Marshal.Array
 
 type V = SV.Vector
@@ -59,59 +71,75 @@ fI = fromIntegral
 -- -------------------------------------------------------
 -- Support for channelized operations
 
--- |Containers that are useful for holding multi-channel stuff.
--- N.B. for good performance, mapChannel should be strict.
-class (T.Nat s) => Channelized s c el where
-  getChannel  :: (c s el) -> ChannelIndex -> el
-  setChannel  :: ChannelIndex -> el -> (c s el) -> (c s el)
-  mapChannel  :: (el -> el) -> ChannelIndex -> (c s el) -> (c s el)
-  fromList    :: [el] -> (c s el)
+-- |Containers for multi-channel type operations.
+-- s is a type-level indicator of the number of channels in the container.
+-- For good performance, most Container types should be strict.
+class (T.Nat s, Applicative (c s)) => Channelized s c el where
+  getChannel :: (c s el) -> ChannelIndex -> el
+  setChannel :: ChannelIndex -> el -> (c s el) -> (c s el)
+  mapChannel :: (el -> el) -> ChannelIndex -> (c s el) -> (c s el)
+  toC        :: [el] -> (c s el)
+  fromC      :: (c s el) -> [el]
 
-newtype T.Nat s => ZipListS s a = ZipListS {getZipListS :: [a]}
+-- A ListVector is a List with a type-level length.
+newtype T.Nat s => ListVector s a = ListVector {getListVector :: [a]}
   deriving (Eq, Functor, Show)
 
-instance T.Nat s => Applicative (ZipListS s) where
-  pure    = pureFn
-  a <*> b = ZipListS $ zipWith ($) (getZipListS a) (getZipListS b)
+-- |Create a ListVector
+makeListVector :: T.Nat s => s -> [a] -> ListVector s a
+makeListVector s xs | T.toInt s < P.length xs =
+  error $ "input list to short to make ListVector of length " ++
+          (show $ T.toInt s)
+makeListVector s xs = ListVector . P.take (T.toInt s) $ xs
 
-pureFn :: forall s a. (T.Nat s) => a -> ZipListS s a
-pureFn = ZipListS . replicate (T.toInt (undefined :: s))
+instance T.Nat s => Applicative (ListVector s) where
+  pure    = pureLV
+  a <*> b = ListVector $ zipWith ($) (getListVector a) (getListVector b)
 
-instance forall s el. (T.Nat s) => Channelized s ZipListS el where
-  getChannel z i = getZipListS z !! (fI i)
-  setChannel i el = ZipListS . uncurry (++) . ((++ [el]) *** P.drop 1) .
-                        P.splitAt (fI i) . getZipListS
-  mapChannel f i  = ZipListS . uncurry (++) . second (\(x:xs) -> f x : xs) .
-                        P.splitAt (fI i) . getZipListS
-  fromList        = ZipListS . P.take (T.toInt (undefined :: s))
+pureLV :: forall s a. (T.Nat s) => a -> ListVector s a
+pureLV = ListVector . replicate (T.toInt (undefined :: s))
 
-data Pair s a = Pair !a !a deriving (Eq, Show)
+instance forall s el. (T.Nat s) => Channelized s ListVector el where
+  getChannel z i = getListVector z !! (fI i)
+  setChannel i el = ListVector . uncurry (++) . ((++ [el]) *** P.drop 1) .
+                        P.splitAt (fI i) . getListVector
+  mapChannel f i  = ListVector . uncurry (++) . second (\(x:xs) -> f x : xs) .
+                        P.splitAt (fI i) . getListVector
+  toC             = makeListVector (undefined :: s)
+  fromC           = getListVector
 
-instance Functor (Pair s) where
-  fmap f (Pair a1 a2) = Pair (f a1) (f a2)
+-- |A Strict pair type.
+data Stereo s a = Stereo !a !a deriving (Eq, Show)
 
-instance Applicative (Pair T.D2) where
-  pure a = Pair a a
-  (Pair a1 a2) <*> (Pair b1 b2) = Pair (a1 b1) (a2 b2) 
+instance Functor (Stereo s) where
+  fmap f (Stereo a1 a2) = Stereo (f a1) (f a2)
 
-instance Channelized T.D2 Pair el where
-  getChannel (Pair a _) 0 = a
-  getChannel (Pair _ b) 1 = b
-  getChannel _          _ = error "getChannel Pair invalid index"
+instance Applicative (Stereo T.D2) where
+  pure a = Stereo a a
+  (Stereo a1 a2) <*> (Stereo b1 b2) = Stereo (a1 b1) (a2 b2) 
+
+instance Channelized T.D2 Stereo el where
+  getChannel (Stereo a _) 0 = a
+  getChannel (Stereo _ b) 1 = b
+  getChannel _          _ = error "getChannel Stereo invalid index"
   {-# INLINE getChannel #-}
 
-  setChannel 0 a (Pair _ b) = Pair a b
-  setChannel 1 b (Pair a _) = Pair a b
-  setChannel _ _ _          = error "setChannel Pair invalid index"
+  setChannel 0 a (Stereo _ b) = Stereo a b
+  setChannel 1 b (Stereo a _) = Stereo a b
+  setChannel _ _ _          = error "setChannel Stereo invalid index"
   {-# INLINE setChannel #-}
 
-  mapChannel f 0 (Pair a b) = Pair (f a) b
-  mapChannel f 1 (Pair a b) = Pair a     (f b)
-  mapChannel _ _ _          = error "setChannel Pair invalid index"
+  mapChannel f 0 (Stereo a b) = Stereo (f a) b
+  mapChannel f 1 (Stereo a b) = Stereo a     (f b)
+  mapChannel _ _ _          = error "setChannel Stereo invalid index"
   {-# INLINE mapChannel #-}
 
-  fromList (a:b:_) = Pair a b
-  {-# INLINE fromList #-}
+  toC (a:b:_) = Stereo a b
+  toC _       = error "Stereo toC invalid input list"
+  {-# INLINE toC #-}
+
+  fromC (Stereo a b) = [a,b]
+  {-# INLINE fromC #-}
 
 newtype T.Nat s => Mono s a = Mono a deriving (Eq, Show)
 
@@ -128,93 +156,140 @@ instance Channelized T.D1 Mono el where
   {-# INLINE getChannel #-}
 
   setChannel 0 a (Mono _) = Mono a
-  setChannel _ _ _          = error "setChannel Mono invalid index"
+  setChannel _ _ _        = error "setChannel Mono invalid index"
   {-# INLINE setChannel #-}
 
   mapChannel f 0 (Mono a) = Mono (f a)
-  mapChannel _ n _          = error $ "mapChannel Mono invalid index " ++ show n
+  mapChannel _ n _        = error $ "mapChannel Mono invalid index " ++ show n
   {-# INLINE mapChannel #-}
 
-  fromList (a:_) = Mono a
+  toC (a:_) = Mono a
+  toC _     = error "toC Mono invalid input list"
+
+  fromC (Mono a) = [a]
 
 -- -------------------------------------------------------
 -- Support for channelized vectors
 
--- |Create a channelized vector from an interleaved vector
-data ChannelizedVector a = CVec !NumChannels !(V a)
+-- |A StorableVector with a type-level channel definition.
+data ChannelizedVector s a = CVec !(V a)
 
-numChannels :: ChannelizedVector a -> NumChannels
-numChannels (CVec nc _) = nc
+-- |A value-level representation of the number of channels in the vector.
+-- O1
+numChannels :: forall s a. (T.Nat s) => ChannelizedVector s a -> NumChannels
+numChannels _ = T.toNum (undefined :: s)
 
-interleave :: ChannelizedVector a -> V a
-interleave (CVec _ v) = v
+-- |Create an interleaved vector from a ChannelizedVector.
+-- O1
+interleave :: ChannelizedVector s a -> V a
+interleave (CVec v) = v
 
 -- |Create a ChannelizedVector.  The vector length
 -- must be a multiple of the number of channels requested.
-channelize :: NumChannels -> V a -> Maybe (ChannelizedVector a)
-channelize 1 v = Just (CVec 1 v)
-channelize n v = if (SV.length v `rem` (fI n) == 0) && (n > 0)
-  then Just (CVec n v)
+-- In CPS style because of the data reification.
+channelize :: NumChannels
+  -> V a
+  -> (forall s. (T.Nat s) =>
+        Maybe (ChannelizedVector s a)
+        -> r)
+  -> r
+channelize n v k = T.reifyIntegral n (\s -> k $ channelizeT s v)
+
+-- |Create a ChannelizedVector.  The vector length is determined
+-- by the type of `s'.
+channelizeT :: forall s a. (T.Nat s) =>
+  s
+  -> V a
+  -> Maybe (ChannelizedVector s a)
+channelizeT _ v = if SV.length v `rem` nc == 0 && nc > 0
+  then Just (CVec v)
   else Nothing
+  where
+    nc = T.toInt (undefined :: s)
 
 -- |Make a copy of the specified channel from a ChannelizedVector.
-getChannelV :: Storable a => ChannelizedVector a -> ChannelIndex -> V a
+getChannelV :: (T.Nat s, Storable a) => ChannelizedVector s a
+  -> ChannelIndex
+  -> V a
 getChannelV cv n = SV.sample (fI $ numFrames cv) (\i -> index cv (fI i) n)
 
 -- |Return a frame of data
-getFrame :: Storable a => ChannelizedVector a -> FrameCount -> [a]
-getFrame cv@(CVec nc _) fc = map (index cv fc) [0 .. (fromIntegral $ nc - 1)]
+getFrame :: (T.Nat s, Storable a) =>
+  ChannelizedVector s a
+  -> FrameCount
+  -> [a]
+getFrame cv fc = map (index cv fc) [0 .. nc - 1]
+  where
+    nc = fI $ numChannels cv
 
 rawPosition :: NumChannels -> FrameCount -> ChannelIndex -> Int
 rawPosition nc fc c = (fI nc * fI fc) + (fI c)
 
 -- |Calculate the number of frames in a ChannelizedVector
-numFrames :: ChannelizedVector a -> FrameCount
-numFrames (CVec nc v) = fI (SV.length v) `div` nc
+numFrames :: T.Nat s => ChannelizedVector s a -> FrameCount
+numFrames cv@(CVec v) = fI (SV.length v) `div` nc
+  where
+    nc = numChannels cv
 
 -- |Look up a value in a ChannelizedVector by frame and channel.
-index :: (Storable a) => ChannelizedVector a -> FrameCount -> ChannelIndex -> a
-index (CVec nc v) fc c = SV.index v (rawPosition nc fc c)
+index :: (T.Nat s, Storable a) =>
+  ChannelizedVector s a
+  -> FrameCount
+  -> ChannelIndex
+  -> a
+index cv@(CVec v) fc c = SV.index v (rawPosition nc fc c)
+  where
+    nc = numChannels cv
 
 -- --------------------------------------------
 -- Basic interface
 
 -- |Take n frames from a ChannelizedVector.
-take :: (Storable a) => ChannelizedVector a -> FrameCount -> ChannelizedVector a
-take (CVec nc v) fc = CVec nc $ SV.take (fI nc * fI fc) v
+take :: (T.Nat s, Storable a) =>
+  ChannelizedVector s a
+  -> FrameCount
+  -> ChannelizedVector s a
+take cv@(CVec v) fc = CVec $ SV.take (nc * fI fc) v
+  where nc = fI $ numChannels cv
 
 -- |Drop n frames from a ChannelizedVector.
-drop :: (Storable a) => ChannelizedVector a -> FrameCount -> ChannelizedVector a
-drop (CVec nc v) fc = CVec nc $ SV.drop (fI nc * fI fc) v
+drop :: (T.Nat s, Storable a) => ChannelizedVector s a
+  -> FrameCount
+  -> ChannelizedVector s a
+drop cv@(CVec v) fc = CVec $ SV.drop (fI nc * fI fc) v
+  where nc = numChannels cv
 
 -- |Split a ChannelizedVector into two at the given frame position.
-splitAt :: (Storable a) => ChannelizedVector a
+splitAt :: (T.Nat s, Storable a) => ChannelizedVector s a
   -> FrameCount
-  -> (ChannelizedVector a, ChannelizedVector a)
-splitAt (CVec nc v) fc = (CVec nc v1, CVec nc v2)
+  -> (ChannelizedVector s a, ChannelizedVector s a)
+splitAt cv@(CVec v) fc = (CVec v1, CVec v2)
   where
     (v1, v2) = SV.splitAt (fI nc * fI fc) v
+    nc = numChannels cv
 
 -- --------------------------------------------
 -- Maps
 
 -- |Map a function uniformly over all channels.
 -- O(n)
-mapAll :: Storable a => (a -> a)
-  -> ChannelizedVector a
-  -> ChannelizedVector a
-mapAll f (CVec n v) = CVec n $ SV.map f v
+mapAll :: (Storable a) => (a -> a)
+  -> ChannelizedVector s a
+  -> ChannelizedVector s a
+mapAll f (CVec v) = CVec $ SV.map f v
 
 -- |Map a list of functions, one per channel, over a ChannelizedVector.
 -- O(n)
 mapChannels :: (Channelized s c (a -> a), Storable a) => c s (a -> a)
-  -> ChannelizedVector a
-  -> ChannelizedVector a
-mapChannels fs (CVec nc v) = CVec nc $ SV.mapIndexed f v
+  -> ChannelizedVector s a
+  -> ChannelizedVector s a
+mapChannels fs cv@(CVec v) = CVec $ SV.mapIndexed f v
   where
+    nc = numChannels cv
     f i = fs `getChannel` (normChn nc i)
 
 {- --I'd like to test this version, but mapIndexed may be a better choice.
+-- currently this code is out of date
 mapChannels fs cv@(CVec nc v) = CVec nc $
   SV.sample (fI $ numFrames cv) (\i ->
     f (normChn nc i) (SV.index v i))
@@ -224,52 +299,64 @@ mapChannels fs cv@(CVec nc v) = CVec nc $
 
 -- |Map a function over one channel of a ChannelizedVector.
 -- O(n), where n is the total length of the ChannelizedVector.
-mapChannelV :: Storable a => (a -> a)
+mapChannelV :: (T.Nat s, Storable a) => (a -> a)
   -> ChannelIndex
-  -> ChannelizedVector a
-  -> ChannelizedVector a
-mapChannelV f n (CVec nc v) = CVec nc $ SV.mapIndexed f' v
+  -> ChannelizedVector s a
+  -> ChannelizedVector s a
+mapChannelV f n cv@(CVec v) = CVec $ SV.mapIndexed f' v
   where
+    nc = numChannels cv
     f' i = if (normChn nc i) == fI n then f else id
 
 -- ----------------
 -- folds
 -- I'm not doing many folds yet, we'll see what I need.
 
--- |Perform a fold over each channel
-foldl :: Storable a => [(b -> a -> b)] -> [b] -> ChannelizedVector a -> [b]
-foldl fs i0s (CVec nc v0)
-  | nc == 1 = [SV.foldl (head fs) (head i0s) v0]
-  | otherwise = fmap snd $ SV.foldl f (P.take (fI nc) $ P.zip fs i0s) v0
-  where
-    f ((f1, acc):accs) b = let newacc = f1 acc b in accs ++ [(f1, newacc)]
-
-foldl' :: (Channelized s c (a -> b -> a),
-           Channelized s c a,
-           Applicative (c s),
-           Channelized s c (SV.Vector b),
-           Storable b) =>
+-- |Perform a fold over each channel.  This should be essentially the same as
+-- foldl' below, once I've got a solid implementation for it.
+foldl :: (Channelized s c (a -> b -> a),
+    Channelized s c a,
+    Channelized s c (SV.Vector b),
+    Storable b) =>
   c s (a -> b -> a)
   -> c s a
-  -> ChannelizedVector b
+  -> ChannelizedVector s b
   -> c s a
-foldl' fs i0s (CVec nc v0)
-  | nc == 1 = setChannel 0 (SV.foldl' (getChannel fs 0) (getChannel i0s 0) v0)
-                         i0s
-foldl' fs i0s (CVec nc v0) = hopfoldl' <$> fs <*> i0s <*> pure (fI nc) <*>
-                             fromList (map (flip SV.drop v0) [0 .. (fI $ nc-1)])
+foldl fs i0s cv@(CVec v0) = hopfoldl <$> fs <*> i0s <*> pure (fI nc) <*>
+                             toC (map (flip SV.drop v0) [0 .. (fI $ nc-1)])
+  where
+    nc = numChannels cv
+{-# INLINE foldl #-}
+
+foldl' :: (Channelized s c (a -> b -> a),
+    Channelized s c a,
+    Channelized s c (SV.Vector b),
+    Storable b) =>
+  c s (a -> b -> a)
+  -> c s a
+  -> ChannelizedVector s b
+  -> c s a
+foldl' fs i0s cv@(CVec v0) = hopfoldl' <$> fs <*> i0s <*> pure (fI nc) <*>
+                             toC (map (flip SV.drop v0) [0 .. (fI $ nc-1)])
+  where
+    nc = numChannels cv
 {-# INLINE foldl' #-}
-
--- A strict pair type, only used internally
-data PairS a b = PairS !a !b
-
-sndS :: PairS a b -> b
-sndS (PairS _ b) = b
 
 -- Helper function for calculating channel indices
 normChn :: NumChannels -> ChannelIndex -> ChannelIndex
 normChn 1 _  = 0
 normChn nc i = i `rem` (fI nc)
+
+hopfoldl :: (Storable a) => (b -> a -> b) -> b -> Int -> SV.Vector a -> b
+hopfoldl f v hop (SVB.SV x s l) =
+   unsafePerformIO $ withForeignPtr x $ \ptr ->
+      let sptr = ptr `advancePtr` s
+          go pos p z = if pos >= l
+                     then return z
+                     else (peek p >>= go (pos + hop)
+                          (p `advancePtr` hop) . f z)
+      in  go 0 sptr v
+{-# INLINE hopfoldl #-}
 
 hopfoldl' :: (Storable a) => (b -> a -> b) -> b -> Int -> SV.Vector a -> b
 hopfoldl' f v hop (SVB.SV x s l) =
@@ -277,6 +364,8 @@ hopfoldl' f v hop (SVB.SV x s l) =
       let sptr = ptr `advancePtr` s
           go pos p z = if pos >= l
                      then return z
-                     else z `seq` (peek p >>= go (pos + hop) (p `advancePtr` hop) . f z)
+                     else z `seq` (peek p >>= go (pos + hop)
+                          (p `advancePtr` hop) . f z)
       in  go 0 sptr v
 {-# INLINE hopfoldl' #-}
+

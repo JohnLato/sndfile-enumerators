@@ -1,6 +1,6 @@
 -- Read a wave file and return some information about it.
 
-{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE BangPatterns, FlexibleContexts #-}
 module Main where
 
 import Prelude as P
@@ -11,7 +11,7 @@ import qualified Data.StorableVector as SV
 import qualified Data.IntMap as IM
 import Data.Word (Word8)
 import Data.List (transpose)
-import qualified Data.TypeLevel.Num as TN
+import qualified Data.TypeLevel.Num as T
 import Control.Monad.Trans
 import Control.Applicative
 import Control.Parallel.Strategies
@@ -33,7 +33,7 @@ main = do
 -- do further processing.  The IntMap has an entry for each type of chunk
 -- in the wave file.  Read the first format chunk and disply the 
 -- format information, then use the dictProcessData function
--- to enumerate over the max_iter iteratee to find the maximum value
+-- to enumerate over the maxIter iteratee to find the maximum value
 -- (peak amplitude) in the file.
 test :: Maybe (IM.IntMap [WAVEDE]) -> IterateeG V Word8 IO ()
 test Nothing = lift $ putStrLn "No dictionary"
@@ -42,22 +42,23 @@ test (Just dict) = do
   lift . print $ fmtm
   case fmtm of
     Just fmt -> do
-      maxm <- dictProcessData 0 dict . joinI . deMux fmt $ max_iter
-      lift . print $ show maxm
+      case numberOfChannels fmt of
+        1 -> (dictProcessData 0 dict . joinI . channelizeStream T.d1 $
+                maxIter (undefined :: Mono T.D1 Double)) >>= lift . print
+        2 -> (dictProcessData 0 dict . joinI . channelizeStream T.d2 $
+                maxIter (undefined :: Stereo T.D2 Double)) >>= lift . print
+        n -> T.reifyIntegral n $ \n' ->
+               (dictProcessData 0 dict . joinI . channelizeStream n' $
+               maxIter (undefined :: ListVector s Double)) >>= lift . print
     Nothing -> liftIO $ print "no format"
   return ()
 
--- |This version is faster, but lower-level
-max_iter :: IterateeG [] (ChannelizedVector Double) IO (Pair TN.D2 Double)
-max_iter = m' (pure 0)
+maxIter :: (Monad m,
+            Channelized s c (Double -> Double -> Double),
+            Channelized s c Double,
+            Channelized s c (SV.Vector Double)) =>
+  c s Double
+  -> IterateeG [] (ChannelizedVector s Double) m (c s Double)
+maxIter _ = Data.Iteratee.foldl' (CV.foldl' f) (toC $ repeat 0)
   where
-  m' acc = IterateeG (step acc)
-  step acc (Chunk []) = return $ Cont (m' acc) Nothing
-  step acc (Chunk (x:[])) = return $ Cont (m' $! newacc) Nothing
-    where newacc = CV.foldl' f acc x
-  step acc (Chunk xs) = return $ Cont (m' $! newacc) Nothing
-    where
-      newacc = P.foldl1 outerF . map (CV.foldl' f acc) $ xs
-  step acc str = return $ Done acc str
-  f = pure $ flip (max . abs)
-  outerF a b = f <*> a <*> b
+    f = pure $ flip (max . abs)

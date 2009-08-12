@@ -1,15 +1,14 @@
 module Sound.Iteratee.Channelize (
   -- * Functions
   -- ** Multichannel support functions
-  mux,
-  deMux
+  interleaveStream
+  ,channelizeStream
 )
 
 where
 
 import Prelude as P
 import Sound.Iteratee.Instances()
-import Sound.Iteratee.Base
 import qualified Sound.Iteratee.ChannelizedVector as CV
 import Sound.Iteratee.ChannelizedVector (ChannelizedVector)
 
@@ -19,18 +18,20 @@ import qualified Data.StorableVector as SV
 import qualified Data.StorableVector.Base as SVB
 
 import Control.Arrow
+import qualified Data.TypeLevel.Num as T
 
 -- internal type synonym
 type V = SV.Vector
 
 -- | An enumerator that creates an interleaved stream from a channelized
 -- stream.
-mux :: Monad m =>  EnumeratorN [] (ChannelizedVector Double) V Double m a
-mux = convStream muxFunc
+interleaveStream :: (T.Nat s, Monad m) =>
+  EnumeratorN [] (ChannelizedVector s Double) V Double m a
+interleaveStream = convStream muxFunc
 
 -- |An Iteratee to be used in convStream to mux a channelized stream.
-muxFunc :: Monad m =>
-           IterateeG [] (ChannelizedVector Double) m
+muxFunc :: (T.Nat s, Monad m) =>
+           IterateeG [] (ChannelizedVector s Double) m
                         (Maybe (V Double))
 muxFunc = IterateeG step
   where
@@ -40,16 +41,18 @@ muxFunc = IterateeG step
 
 -- | A stream enumerator to convert an interleaved audio stream to a 
 -- channelized stream.
-deMux :: Monad m => AudioFormat -> EnumeratorN V Double [] (ChannelizedVector Double) m a
-deMux = convStream . deMuxFunc . numberOfChannels
+channelizeStream :: (T.Nat s, Monad m) =>
+  s
+  -> EnumeratorN V Double [] (ChannelizedVector s Double) m a
+channelizeStream = convStream . deMuxFunc
 
 -- | An iteratee to convert an interleaved stream to a channelized stream.
-deMuxFunc :: Monad m =>
-             NumChannels ->
-             IterateeG V Double m (Maybe ([ChannelizedVector Double]))
+deMuxFunc :: (T.Nat s, Monad m) =>
+             s ->
+             IterateeG V Double m (Maybe ([ChannelizedVector s Double]))
 deMuxFunc n = IterateeG step
   where
-  n' = fromIntegral n
+  n' = T.toInt n
   step c@(Chunk v) | SV.length v < n' = return $ Cont (step' c) Nothing
   step (Chunk v) = let (vecs, rm) = channelizeVector n v in
                    return $ Done (fmap (:[]) vecs) $ Chunk rm
@@ -59,10 +62,11 @@ deMuxFunc n = IterateeG step
 -- | Split an interleaved vector to a list of channelized vectors.
 -- The second half of the tuple is any data remaining after splitting
 -- to channels.
-channelizeVector :: NumChannels
+channelizeVector :: (T.Nat s) =>
+  s
   -> V Double
-  -> (Maybe (ChannelizedVector Double), V Double)
-channelizeVector n v = first (CV.channelize n) $ SV.splitAt chanLen v
+  -> (Maybe (ChannelizedVector s Double), V Double)
+channelizeVector n v = first (CV.channelizeT n) $ SV.splitAt chanLen v
   where
-    n' = fromIntegral n
+    n' = T.toInt n
     chanLen = SV.length v - (SV.length v `rem` n')
