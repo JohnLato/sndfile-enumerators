@@ -1,4 +1,5 @@
 -- Read a wave file and return some information about it.
+-- This program demonstrates how to use the Channelized features.
 
 {-# LANGUAGE BangPatterns, FlexibleContexts #-}
 module Main where
@@ -35,6 +36,11 @@ main = do
 -- format information, then use the dictProcessData function
 -- to enumerate over the maxIter iteratee to find the maximum value
 -- (peak amplitude) in the file.
+--
+-- Unfortunately I do not yet know how to make a reification function to
+-- process the data, so it's necessary to do a case on the number of channels.
+-- Of course one could just use ListVector as in the final case, but that
+-- is much less efficient.
 test :: Maybe (IM.IntMap [WAVEDE]) -> IterateeG V Word8 IO ()
 test Nothing = lift $ putStrLn "No dictionary"
 test (Just dict) = do
@@ -53,10 +59,12 @@ test (Just dict) = do
     Nothing -> liftIO $ print "no format"
   return ()
 
+-- |Calculate the maximum value of an iteratee of ChannelizedVectors.
+-- Note that this is completely polymorphic over channel numbers.
 maxIter :: (Monad m,
-            Channelized s c (Double -> Double -> Double),
-            Channelized s c Double,
-            Channelized s c (SV.Vector Double)) =>
+    Channelized s c (Double -> Double -> Double),
+    Channelized s c Double,
+    Channelized s c (SV.Vector Double)) =>
   c s Double
   -> IterateeG [] (ChannelizedVector s Double) m (c s Double)
 maxIter _ = Data.Iteratee.foldl' (CV.foldl' f) (toC $ repeat 0)
