@@ -320,8 +320,7 @@ mapChannelV f n cv@(CVec v) = CVec $ SV.mapIndexed f' v
 -- folds
 -- I'm not doing many folds yet, we'll see what I need.
 
--- |Perform a fold over each channel.  This should be essentially the same as
--- foldl' below, once I've got a solid implementation for it.
+-- |Perform a fold over each channel.
 foldl :: (Channelized s c (a -> b -> a),
     Channelized s c a,
     Channelized s c (SV.Vector b),
@@ -355,7 +354,7 @@ normChn :: NumChannels -> ChannelIndex -> ChannelIndex
 normChn 1 _  = 0
 normChn nc i = i `rem` (fI nc)
 
-hopfoldl :: (Storable a) => (b -> a -> b) -> b -> Int -> SV.Vector a -> b
+hopfoldl :: (Storable b) => (a -> b -> a) -> a -> Int -> SV.Vector b -> a
 hopfoldl f v hop (SVB.SV x s l) =
    unsafePerformIO $ withForeignPtr x $ \ptr ->
       let sptr = ptr `advancePtr` s
@@ -366,15 +365,14 @@ hopfoldl f v hop (SVB.SV x s l) =
       in  go 0 sptr v
 {-# INLINE hopfoldl #-}
 
-hopfoldl' :: (Storable a) => (b -> a -> b) -> b -> Int -> SV.Vector a -> b
-hopfoldl' f v hop (SVB.SV x s l) =
-   unsafePerformIO $ withForeignPtr x $ \ptr ->
+hopfoldl' :: (Storable b) => (a -> b -> a) -> a -> Int -> SV.Vector b -> a
+hopfoldl' f v hop (SVB.SV x s l) = unsafePerformIO $ withForeignPtr x $ \ptr ->
       let sptr = ptr `advancePtr` s
           go pos p z = if pos >= l
                      then return z
                      else z `seq` (Foreign.Storable.peek p >>= go (pos + hop)
-                          (p `advancePtr` hop) . f z)
-      in  go 0 sptr v
+                             (p `advancePtr` hop) . f z)
+      in go 0 sptr v
 {-# INLINE hopfoldl' #-}
 
 -- ----------------------------------------
