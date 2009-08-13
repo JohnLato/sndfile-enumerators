@@ -61,6 +61,7 @@ import qualified Data.StorableVector.Base as SVB
 
 import Control.Arrow
 import Control.Applicative
+import Control.Monad.Fix
 import Data.Monoid
 
 import System.IO.Unsafe
@@ -355,24 +356,24 @@ normChn 1 _  = 0
 normChn nc i = i `rem` (fI nc)
 
 hopfoldl :: (Storable b) => (a -> b -> a) -> a -> Int -> SV.Vector b -> a
-hopfoldl f v hop (SVB.SV x s l) =
-   unsafePerformIO $ withForeignPtr x $ \ptr ->
+hopfoldl f v hop (SVB.SV x s l) = unsafePerformIO $ withForeignPtr x $ \ptr ->
       let sptr = ptr `advancePtr` s
-          go pos p z = if pos >= l
-                     then return z
-                     else (Foreign.Storable.peek p >>= go (pos + hop)
-                          (p `advancePtr` hop) . f z)
-      in  go 0 sptr v
+          go fx pos z =
+            if pos >= l
+            then return (pos, z)
+            else (Foreign.Storable.peek (sptr `advancePtr` pos) >>=
+                   \a -> let fza = f z a in fx (pos + hop) fza)
+      in (fix go) 0 v >>= return . snd
 {-# INLINE hopfoldl #-}
 
 hopfoldl' :: (Storable b) => (a -> b -> a) -> a -> Int -> SV.Vector b -> a
 hopfoldl' f v hop (SVB.SV x s l) = unsafePerformIO $ withForeignPtr x $ \ptr ->
       let sptr = ptr `advancePtr` s
-          go pos p z = if pos >= l
-                     then return z
-                     else z `seq` (Foreign.Storable.peek p >>= go (pos + hop)
-                             (p `advancePtr` hop) . f z)
-      in go 0 sptr v
+          go fx pos z = if pos >= l
+            then return (pos, z)
+            else (Foreign.Storable.peek (sptr `advancePtr` pos) >>=
+                   \a -> let fza = f z a in fza `seq` fx (pos + hop) fza)
+      in (fix go) 0 v >>= return . snd
 {-# INLINE hopfoldl' #-}
 
 -- ----------------------------------------
