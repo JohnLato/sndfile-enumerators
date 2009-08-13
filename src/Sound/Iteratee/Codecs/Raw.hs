@@ -19,7 +19,7 @@ data RawCodec = RawCodec
 
 instance WritableAudio RawCodec where
   emptyState         RawCodec   = error "emptyState not defined for Raw files"
-  initState          RawCodec h = error "initState not defined for Raw files"
+  initState          RawCodec _ = error "initState not defined for Raw files"
   supportedBitDepths RawCodec   = Any
   fileType           RawCodec   = Raw
 
