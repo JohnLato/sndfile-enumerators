@@ -52,6 +52,6 @@ max_iter = m' 0
                         Nothing
   step acc str = return $ Done acc str
 
--- |This version is slower, but high-level and easier to understand.
+-- |This version is slower, but higher-level.
 max2 :: IterateeG V Double IO Double
-max2 = foldl' (flip (max . abs)) 0
+max2 = foldl' (\a b -> max (abs a) b) 0
