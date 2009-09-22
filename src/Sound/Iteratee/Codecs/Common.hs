@@ -112,32 +112,31 @@ hostToLE vec = let be' = unsafePerformIO be in do
 
 swapBytes :: Int -> FP.Ptr a -> IO ()
 swapBytes wSize p = case wSize of
-                          1 -> return ()
-                          2 -> do
-                               w1 <- peekByteOff p 0 :: IO Word8
-                               w2 <- peekByteOff p 1 :: IO Word8
-                               pokeByteOff p 0 w2
-                               pokeByteOff p 1 w1
-                          3 -> do
-                               w1 <- peekByteOff p 0 :: IO Word8
-                               w3 <- peekByteOff p 2 :: IO Word8
-                               pokeByteOff p 0 w3
-                               pokeByteOff p 1 w1
-                          4 -> do
-                               w1 <- peekByteOff p 0 :: IO Word8
-                               w2 <- peekByteOff p 1 :: IO Word8
-                               w3 <- peekByteOff p 2 :: IO Word8
-                               w4 <- peekByteOff p 3 :: IO Word8
-                               pokeByteOff p 0 w4
-                               pokeByteOff p 1 w3
-                               pokeByteOff p 2 w2
-                               pokeByteOff p 3 w1
-                          x -> do
-                               let ns = [0..(x-1)]
-                               ws <- sequence
-                                     [peekByteOff p n :: IO Word8 | n <- ns]
-                               sequence_ [ pokeByteOff p n w | n <- ns, w <- reverse ws]
-                               return ()
+  1 -> return ()
+  2 -> do
+    w1 <- peekByteOff p 0 :: IO Word8
+    w2 <- peekByteOff p 1 :: IO Word8
+    pokeByteOff p 0 w2
+    pokeByteOff p 1 w1
+  3 -> do
+    w1 <- peekByteOff p 0 :: IO Word8
+    w3 <- peekByteOff p 2 :: IO Word8
+    pokeByteOff p 0 w3
+    pokeByteOff p 2 w1
+  4 -> do
+    w1 <- peekByteOff p 0 :: IO Word8
+    w2 <- peekByteOff p 1 :: IO Word8
+    w3 <- peekByteOff p 2 :: IO Word8
+    w4 <- peekByteOff p 3 :: IO Word8
+    pokeByteOff p 0 w4
+    pokeByteOff p 1 w3
+    pokeByteOff p 2 w2
+    pokeByteOff p 3 w1
+  x -> do
+    let ns = [0..(x-1)]
+    ws <- sequence [peekByteOff p n :: IO Word8 | n <- ns]
+    sequence_ [ pokeByteOff p n w | n <- ns, w <- reverse ws]
+    return ()
 
 -- |Convert Word8s to Doubles
 convFunc :: (MonadIO m, Functor m) =>
