@@ -1,4 +1,8 @@
-{-# LANGUAGE MultiParamTypeClasses, FlexibleContexts, FlexibleInstances, UndecidableInstances, ScopedTypeVariables #-}
+{-# LANGUAGE MultiParamTypeClasses,
+             FlexibleContexts,
+             FlexibleInstances,
+             UndecidableInstances,
+             ScopedTypeVariables #-}
 
 module Sound.Iteratee.Instances.StorableVector (
   vmap
@@ -31,7 +35,10 @@ instance (Storable el) => LL.ListLike (SV.Vector el) el where
 
 instance (Storable el) => LL.FoldableLL (SV.Vector el) el where
   foldl     = SV.foldl
+  foldl'    = SV.foldl'
+  foldl1    = SV.foldl1
   foldr     = SV.foldr
+  foldr1    = SV.foldr1
 
 instance (Storable el, LL.ListLike (SV.Vector el) el) =>
          SC.StreamChunk SV.Vector el where
