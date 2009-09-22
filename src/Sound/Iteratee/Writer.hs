@@ -28,5 +28,5 @@ fileDriverAudio :: ReadableChunk s el =>
   IterateeG s el AudioMonad a ->
   FilePath ->
   IO a
-fileDriverAudio i fp = runAudioMonad (fileDriverRandom i fp)
+fileDriverAudio i = runAudioMonad . fileDriverRandom i
 

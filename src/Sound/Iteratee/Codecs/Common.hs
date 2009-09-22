@@ -96,8 +96,7 @@ unroller wSize = IterateeG step
                      return $ Just v'
 
 hostToLE :: Storable a => V a -> IO (V a)
-hostToLE vec = let be' = unsafePerformIO be in do
-  case be' of
+hostToLE vec = let be' = unsafePerformIO be in case be' of
     True -> let
               (fp, off, len) = VB.toForeignPtr vec
               wSize = sizeOf $ Vec.head vec
