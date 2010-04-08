@@ -56,8 +56,8 @@ import Sound.Iteratee.Base
 import Data.Iteratee (IterateeG (..), EnumeratorN, IterGV (..), StreamG (..))
 import qualified Data.Iteratee as I
 import qualified Data.TypeLevel.Num as T
-import qualified Data.StorableVector as SV
-import qualified Data.StorableVector.Base as SVB
+--import qualified Data.StorableVector as SV
+--import qualified Data.StorableVector.Base as SVB
 
 import Control.Arrow
 import Control.Applicative

@@ -6,6 +6,7 @@ module Sound.Iteratee.Base (
   AudioMonad,
   -- *** Functions to work with AudioMonad
   module Control.Monad.Trans.State,
+  defaultChunkLength,
   -- ** Audio Format types
   AudioFormat (..),
   SupportedBitDepths (..),
@@ -20,10 +21,9 @@ module Sound.Iteratee.Base (
 where
 
 import Prelude as P
-import Sound.Iteratee.Instances()
 
 import Control.Monad.Trans.State
-import Control.Parallel.Strategies
+import Control.DeepSeq
 import System.IO
 
 -- |Information about the AudioStream
@@ -54,8 +54,9 @@ data AudioFormat = AudioFormat {
   bitDepth :: BitDepth -- ^Bit depth of the audio data
   } deriving (Show, Eq)
 
-instance NFData AudioFormat where
-  rnf (AudioFormat nc sr bd) = rnf nc >| rnf sr >| rnf bd
+instance DeepSeq AudioFormat where
+  deepseq (AudioFormat nc sr bd) =
+    deepseq nc `seq` deepseq sr `seq` deepseq bd `seq` ()
 
 type NumChannels = Integer
 type SampleRate  = Integer
@@ -64,3 +65,5 @@ type FrameCount  = Integer
 
 data SupportedBitDepths = Any | Supported [BitDepth]
 
+defaultChunkLength :: Int
+defaultChunkLength = 8192
