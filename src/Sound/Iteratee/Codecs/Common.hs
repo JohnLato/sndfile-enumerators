@@ -7,16 +7,17 @@ module Sound.Iteratee.Codecs.Common (
 where
 
 import Sound.Iteratee.Base
-import qualified Data.Iteratee.Base as Iter
-import Sound.Iteratee.Instances()
-import Data.Iteratee.Base
-import qualified Data.StorableVector as Vec
-import qualified Data.StorableVector.Base as VB
-import qualified Foreign.Ptr as FP
-import qualified Foreign.ForeignPtr as FFP
-import Foreign.Storable
+import qualified Data.Iteratee as I
+import Data.MutableIter as Iter
+import qualified Data.MutableIter.IOBuffer as IB
+import Data.MutableIter.IOBuffer (IOBuffer)
+import Foreign.Ptr.Region
+import Foreign.Storable (Storable, sizeOf)
+import qualified Foreign.Storable as FS
+import Foreign.Storable.Region
 import qualified Foreign.Marshal.Utils as FMU
 import Control.Monad
+import Control.Monad.CatchIO
 import Control.Monad.Trans
 import Data.Char (chr)
 import Data.Int.Int24
@@ -24,20 +25,19 @@ import Data.Int
 import Data.Word
 import Data.Word.Word24
 import Data.Bits (shiftL)
-import System.IO
 import System.IO.Unsafe
 
 -- =====================================================
 -- useful type synonyms
 
-type V    = Vec.Vector
+type IOB m el = IOBuffer m el
 
 -- determine host endian-ness
 be :: IO Bool
-be = fmap (==1) $ FMU.with (1 :: Word16) (\p -> peekByteOff p 1 :: IO Word8)
+be = fmap (==1) $ FMU.with (1 :: Word16) (\p -> FS.peekByteOff p 1 :: IO Word8)
 
 -- convenience function to read a 4-byte ASCII string
-stringRead4 :: Monad m => IterateeG V Word8 m (String)
+stringRead4 :: MonadCatchIO m => MIteratee (IOB m Word8) m (String)
 stringRead4 = do
   s1 <- Iter.head
   s2 <- Iter.head
@@ -45,114 +45,128 @@ stringRead4 = do
   s4 <- Iter.head
   return $ map (chr . fromIntegral) [s1, s2, s3, s4]
 
-unroll8 :: (Monad m) => IterateeG V Word8 m (Maybe (V Word8))
-unroll8 = IterateeG step
+unroll8 :: (MonadCatchIO m) => MIteratee (IOB m Word8) m (Maybe (IOB m Word8))
+unroll8 = liftI step
   where
-  step (Chunk vec)
-    | Vec.null vec = return $ Cont unroll8 Nothing
-    | True         = return $ Done (Just vec) (Chunk Vec.empty)
-  step stream      = return $ Done Nothing stream
+  step (I.Chunk buf) = guardNull buf (liftI step) $
+                         idone (Just buf) (I.Chunk IB.empty)
+  step stream        = idone Nothing stream
 
 -- When unrolling to a Word8, use the specialized unroll8 function
 -- because we actually don't need to do anything
 {-# RULES "unroll8" forall n. unroller n = unroll8 #-}
-unroller :: (Storable a, MonadIO m) =>
-            Int ->
-            IterateeG V Word8 m (Maybe (V a))
-unroller wSize = IterateeG step
+unroller :: (Storable a, MonadCatchIO m) =>
+  Int
+  -> MIteratee (IOB (RegionT s m) Word8) (RegionT s m) (Maybe (IOB (RegionT s m) a))
+unroller wSize = liftI step
   where
-  step (Chunk vec)
-    | Vec.null vec           = return $ Cont (unroller wSize) Nothing
-    | Vec.length vec < wSize = return $ Cont (IterateeG $ step' vec) Nothing
-    | Vec.length vec `rem` wSize == 0
-                             = liftIO $ liftM (flip Done (Chunk Vec.empty))
-                                              (convert_vec vec)
-  step (Chunk vec)           =
-                let newLen = (Vec.length vec `div` wSize) * wSize
-                    (h, t) = Vec.splitAt newLen vec
-                in
-                liftIO $ liftM (flip Done (Chunk t)) (convert_vec h)
-  step stream = return $ Done Nothing stream
-  step' i (Chunk vec)
-    | Vec.null vec = return $ Cont (IterateeG $ step' i) Nothing
-    | Vec.length vec + Vec.length i < wSize
-                   = return $ Cont
-                              (IterateeG $ step' (Vec.append i vec))
-                              Nothing
-    | True         = let vec' = Vec.append i vec
-                         newLen = (Vec.length vec' `div` wSize) * wSize
-                         (h, t) = Vec.splitAt newLen vec'
-                     in
-                     liftIO $ liftM (flip Done (Chunk t)) (convert_vec h)
-  step' _i stream  = return $ Done Nothing stream
-  convert_vec vec  = let (fp, off, len) = VB.toForeignPtr vec
-                         f = FP.plusPtr (FFP.unsafeForeignPtrToPtr fp) off
-                     in
-                     do
-                     newFp <- FFP.newForeignPtr_ f
-                     let newV = VB.fromForeignPtr (FFP.castForeignPtr newFp)
-                                (len `div` wSize)
-                     v' <- hostToLE newV
-                     return $ Just v'
+  step (I.Chunk buf) = guardNull buf (liftI step) $ do
+    len <- lift $ IB.length buf
+    if len < wSize then liftI (step' buf)
+      else if len `rem` wSize == 0
+              then do
+                buf' <- lift $ convert_vec buf
+                idone (Just buf') (I.Chunk IB.empty)
+              else let newLen = (len `div` wSize) * wSize
+                   in do
+                      (h, t) <- lift $ IB.splitAt buf newLen
+                      h' <- lift $ convert_vec h
+                      idone (Just h') (I.Chunk t)
+  step stream = idone Nothing stream
+  step' i (I.Chunk buf) = guardNull buf (liftI (step' i)) $ do
+    l <- lift $ IB.length buf
+    iLen <- lift $ IB.length i
+    newbuf <- lift $ IB.append i buf
+    if l+iLen < wSize then liftI (step' newbuf)
+       else do
+         newLen <- lift $ IB.length newbuf
+         let newLen' = (newLen `div` wSize) * wSize
+         (h,t) <- lift $ IB.splitAt newbuf newLen'
+         h' <- lift $ convert_vec h
+         idone (Just h') (I.Chunk t)
+  step' _i stream  = idone Nothing stream
+  convert_vec vec  = hostToLE (IB.castBuffer vec)
 
-hostToLE :: Storable a => V a -> IO (V a)
+hostToLE :: (Monad m, Storable a) => IOB m a -> m (IOB m a)
 hostToLE vec = let be' = unsafePerformIO be in case be' of
-    True -> let
+    True -> error "wrong endian-ness.  Ask the maintainer to implement hostToLE"
+{-
               (fp, off, len) = VB.toForeignPtr vec
               wSize = sizeOf $ Vec.head vec
             in
             loop wSize fp len off
+-}
     False -> return vec
+{-
     where
       loop _wSize _fp 0 _off = return vec
       loop wSize fp len off  = do
         FFP.withForeignPtr fp (swapBytes wSize . flip FP.plusPtr off)
         loop wSize fp (len - 1) (off + 1)
+-}
 
-swapBytes :: Int -> FP.Ptr a -> IO ()
+swapBytes :: MonadIO pr => Int -> RegionalPtr a pr -> pr ()
 swapBytes wSize p = case wSize of
   1 -> return ()
   2 -> do
-    w1 <- peekByteOff p 0 :: IO Word8
-    w2 <- peekByteOff p 1 :: IO Word8
+    (w1 :: Word8) <- peekByteOff p 0
+    (w2 :: Word8) <- peekByteOff p 1
     pokeByteOff p 0 w2
     pokeByteOff p 1 w1
   3 -> do
-    w1 <- peekByteOff p 0 :: IO Word8
-    w3 <- peekByteOff p 2 :: IO Word8
+    (w1 :: Word8) <- peekByteOff p 0
+    (w3 :: Word8) <- peekByteOff p 2
     pokeByteOff p 0 w3
     pokeByteOff p 2 w1
   4 -> do
-    w1 <- peekByteOff p 0 :: IO Word8
-    w2 <- peekByteOff p 1 :: IO Word8
-    w3 <- peekByteOff p 2 :: IO Word8
-    w4 <- peekByteOff p 3 :: IO Word8
+    (w1 :: Word8) <- peekByteOff p 0
+    (w2 :: Word8) <- peekByteOff p 1
+    (w3 :: Word8) <- peekByteOff p 2
+    (w4 :: Word8) <- peekByteOff p 3
     pokeByteOff p 0 w4
     pokeByteOff p 1 w3
     pokeByteOff p 2 w2
     pokeByteOff p 3 w1
-  x -> do
-    let ns = [0..(x-1)]
-    ws <- sequence [peekByteOff p n :: IO Word8 | n <- ns]
-    sequence_ [ pokeByteOff p n w | n <- ns, w <- reverse ws]
-    return ()
+  _ -> error "swapBytes called with wordsize > 4"
+
+liftMaybe :: Monad m => (a -> m b) -> Maybe a -> m (Maybe b)
+liftMaybe _ Nothing = return Nothing
+liftMaybe f (Just a) = liftM Just $ f a
+
+w8 :: Word8
+w8 = 0
+w16 :: Word16
+w16 = 0
+w24 :: Word24
+w24 = 0
+w32 :: Word32
+w32 = 0
 
 -- |Convert Word8s to Doubles
-convFunc :: (MonadIO m, Functor m) =>
-             AudioFormat ->
-             IterateeG V Word8 m (Maybe (V Double))
-convFunc (AudioFormat _nc _sr 8) = (fmap . fmap . Vec.map)
-  (normalize 8 . (fromIntegral :: Word8 -> Int8)) unroll8
-convFunc (AudioFormat _nc _sr 16) = (fmap . fmap . Vec.map)
-  (normalize 16 . (fromIntegral :: Word16 -> Int16))
-  (unroller $ sizeOf (undefined :: Word16))
-convFunc (AudioFormat _nc _sr 24) = (fmap . fmap . Vec.map)
-  (normalize 24 . (fromIntegral :: Word24 -> Int24))
-  (unroller $ sizeOf (undefined :: Word24))
-convFunc (AudioFormat _nc _sr 32) = (fmap . fmap . Vec.map)
-  (normalize 32 . (fromIntegral :: Word32 -> Int32))
-  (unroller $ sizeOf (undefined :: Word32))
-convFunc _ = throwErr (Err "Invalid wave bit depth")
+convFunc :: (MonadCatchIO m) =>
+  AudioFormat
+  -> RegionalPtr Int (RegionT s m)
+  -> RegionalPtr Double (RegionT s m)
+  -> MIteratee (IOBuffer (RegionT s m) Word8)
+               (RegionT s m)
+               (Maybe (IOBuffer (RegionT s m) Double))
+convFunc (AudioFormat _nc _sr 8) offp bufp = do
+  mbuf <- unroll8
+  lift $ liftMaybe (IB.mapBuffer
+    (normalize 8 . (fromIntegral :: Word8 -> Int8)) offp bufp) mbuf
+convFunc (AudioFormat _nc _sr 16) offp bufp = do
+  mbuf <- unroller (sizeOf w16)
+  lift $ liftMaybe (IB.mapBuffer
+    (normalize 16 . (fromIntegral :: Word16 -> Int16)) offp bufp) mbuf
+convFunc (AudioFormat _nc _sr 24) offp bufp = do
+  mbuf <- unroller (sizeOf w24)
+  lift $ liftMaybe (IB.mapBuffer
+    (normalize 24 . (fromIntegral :: Word24 -> Int24)) offp bufp) mbuf
+convFunc (AudioFormat _nc _sr 32) offp bufp = do
+  mbuf <- unroller (sizeOf w32)
+  lift $ liftMaybe (IB.mapBuffer
+    (normalize 32 . (fromIntegral :: Word32 -> Int32)) offp bufp) mbuf
+convFunc _ _ _ = MIteratee $ I.throwErr (I.iterStrExc "Invalid wave bit depth")
 
 
 -- ---------------------
