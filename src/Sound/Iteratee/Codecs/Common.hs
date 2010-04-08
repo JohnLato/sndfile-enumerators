@@ -16,7 +16,6 @@ import Foreign.Storable (Storable, sizeOf)
 import qualified Foreign.Storable as FS
 import Foreign.Storable.Region
 import qualified Foreign.Marshal.Utils as FMU
-import Control.Monad
 import Control.Monad.CatchIO
 import Control.Monad.Trans
 import Data.Char (chr)
@@ -129,10 +128,6 @@ swapBytes wSize p = case wSize of
     pokeByteOff p 3 w1
   _ -> error "swapBytes called with wordsize > 4"
 
-liftMaybe :: Monad m => (a -> m b) -> Maybe a -> m (Maybe b)
-liftMaybe _ Nothing = return Nothing
-liftMaybe f (Just a) = liftM Just $ f a
-
 w8 :: Word8
 w8 = 0
 w16 :: Word16
@@ -149,22 +144,22 @@ convFunc :: (MonadCatchIO m) =>
   -> RegionalPtr Double (RegionT s m)
   -> MIteratee (IOBuffer (RegionT s m) Word8)
                (RegionT s m)
-               (Maybe (IOBuffer (RegionT s m) Double))
+               (IOBuffer (RegionT s m) Double)
 convFunc (AudioFormat _nc _sr 8) offp bufp = do
   mbuf <- unroll8
-  lift $ liftMaybe (IB.mapBuffer
+  lift $ maybe (error "error in convFunc") (IB.mapBuffer
     (normalize 8 . (fromIntegral :: Word8 -> Int8)) offp bufp) mbuf
 convFunc (AudioFormat _nc _sr 16) offp bufp = do
   mbuf <- unroller (sizeOf w16)
-  lift $ liftMaybe (IB.mapBuffer
+  lift $ maybe (error "error in convFunc") (IB.mapBuffer
     (normalize 16 . (fromIntegral :: Word16 -> Int16)) offp bufp) mbuf
 convFunc (AudioFormat _nc _sr 24) offp bufp = do
   mbuf <- unroller (sizeOf w24)
-  lift $ liftMaybe (IB.mapBuffer
+  lift $ maybe (error "error in convFunc") (IB.mapBuffer
     (normalize 24 . (fromIntegral :: Word24 -> Int24)) offp bufp) mbuf
 convFunc (AudioFormat _nc _sr 32) offp bufp = do
   mbuf <- unroller (sizeOf w32)
-  lift $ liftMaybe (IB.mapBuffer
+  lift $ maybe (error "error in convFunc") (IB.mapBuffer
     (normalize 32 . (fromIntegral :: Word32 -> Int32)) offp bufp) mbuf
 convFunc _ _ _ = MIteratee $ I.throwErr (I.iterStrExc "Invalid wave bit depth")
 
