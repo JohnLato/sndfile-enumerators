@@ -1,3 +1,5 @@
+{-# LANGUAGE RankNTypes, FlexibleContexts #-}
+
 {- | Generic functions and iteratees to support writing files.
 -}
 
@@ -11,11 +13,12 @@ where
 
 import Sound.Iteratee.Base
 import Sound.Iteratee.Codecs
-import Data.Iteratee
-import Data.Iteratee.IO
-import Data.Iteratee.Base.StreamChunk
 
-import System.IO
+import Data.Iteratee.Base.ReadableChunk
+import Data.Iteratee.IO
+import Data.MutableIter
+
+import Control.Monad.Trans.Region
 
 runAudioMonad :: AudioMonad a -> IO a
 runAudioMonad am = do
@@ -24,9 +27,10 @@ runAudioMonad am = do
     NoState     -> return a
     WaveState{} -> runWaveAM (put s >> return a)
 
-fileDriverAudio :: ReadableChunk s el =>
-  IterateeG s el AudioMonad a ->
-  FilePath ->
-  IO a
-fileDriverAudio i = runAudioMonad . fileDriverRandom i
-
+fileDriverAudio :: forall a el st. (ReadableChunk (st el) el) =>
+  (forall s.  MIteratee (st el) (RegionT s AudioMonad) a)
+  -> FilePath
+  -> IO a
+fileDriverAudio i fp = runAM (runRegionT (fileDriverRandom (unwrap i) fp))
+  where
+    runAM = runAudioMonad
