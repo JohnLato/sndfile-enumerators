@@ -6,14 +6,19 @@ module Sound.Iteratee.Codecs.Raw (
 where
 
 import Sound.Iteratee.Base
-import Sound.Iteratee.Instances()
 import Sound.Iteratee.Codecs.Common
-import Data.Iteratee
-import qualified Data.StorableVector as SV
-import Data.Word
-import Control.Monad.Trans
+import Data.MutableIter
+import qualified Data.MutableIter.IOBuffer as IB
 
-type V = SV.Vector
+import Data.Word
+import Control.Monad.CatchIO
+import Control.Monad.Trans
+import Control.Monad.Trans.Region
+
+import Foreign.Marshal.Utils.Region
+import Foreign.Marshal.Array.Region
+
+type IOB = IB.IOBuffer
 
 data RawCodec = RawCodec
 
@@ -23,8 +28,13 @@ instance WritableAudio RawCodec where
   supportedBitDepths RawCodec   = Any
   fileType           RawCodec   = Raw
 
-readRaw :: (MonadIO m, Functor m) =>
-           AudioFormat -> EnumeratorGMM V Word8 V Double m a
-readRaw fmt iter_dub = let iter = convStream (convFunc fmt) iter_dub in
-  return . joinI $ iter
+readRaw ::
+ (MonadCatchIO m, Functor m) =>
+  AudioFormat
+  -> MIteratee (IOB (RegionT s m) Double) (RegionT s m) a
+  -> MIteratee (IOB (RegionT s m) Word8) (RegionT s m) a
+readRaw fmt iter_dub = do
+  offp <- lift $ new 0
+  bufp <- lift $ mallocArray defaultChunkLength
+  joinIob . convStream (convFunc fmt offp bufp) $ iter_dub
 
