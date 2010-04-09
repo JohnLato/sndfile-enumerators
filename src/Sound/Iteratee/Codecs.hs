@@ -13,14 +13,18 @@ import Sound.Iteratee.Base
 import Sound.Iteratee.Codecs.Wave
 import Sound.Iteratee.Codecs.Raw
 
-import Data.Iteratee
-import qualified Data.StorableVector as SV
+import Data.MutableIter
+import qualified Data.MutableIter.IOBuffer as IB
+import Control.Monad.Trans.Region
 
 -- |Get a writer iteratee for a SupportedFileFormat
-getWriter :: SupportedFileFormat ->
-             FilePath ->
-             AudioFormat ->
-             IterateeG SV.Vector Double AudioMonad ()
+getWriter ::
+  SupportedFileFormat
+  -> FilePath
+  -> AudioFormat
+  -> MIteratee (IB.IOBuffer (RegionT s AudioMonad) Double)
+               (RegionT s AudioMonad)
+               ()
 getWriter Wave = writeWave
 getWriter Raw  = error "No writer defined for Raw format"
 
