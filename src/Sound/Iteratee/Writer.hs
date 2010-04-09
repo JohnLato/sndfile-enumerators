@@ -14,11 +14,11 @@ where
 import Sound.Iteratee.Base
 import Sound.Iteratee.Codecs
 
-import Data.Iteratee.Base.ReadableChunk
-import Data.Iteratee.IO
 import Data.MutableIter
+import Data.MutableIter.IOBuffer (IOBuffer)
 
 import Control.Monad.Trans.Region
+import Foreign.Storable (Storable)
 
 runAudioMonad :: AudioMonad a -> IO a
 runAudioMonad am = do
@@ -27,10 +27,12 @@ runAudioMonad am = do
     NoState     -> return a
     WaveState{} -> runWaveAM (put s >> return a)
 
-fileDriverAudio :: forall a el st. (ReadableChunk (st el) el) =>
-  (forall s.  MIteratee (st el) (RegionT s AudioMonad) a)
+fileDriverAudio :: (Storable el) =>
+  (forall s.  MIteratee (IOBuffer (RegionT s AudioMonad) el)
+                        (RegionT s AudioMonad)
+                        a)
   -> FilePath
   -> IO a
-fileDriverAudio i fp = runAM (runRegionT (fileDriverRandom (unwrap i) fp))
+fileDriverAudio i fp = runAM (fileDriverRandom defaultChunkLength i fp)
   where
     runAM = runAudioMonad
