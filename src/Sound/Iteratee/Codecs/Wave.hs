@@ -49,7 +49,6 @@ import qualified Data.Iteratee as Itr
 import Data.Iteratee (throwErr, iterStrExc)
 
 import qualified Data.IntMap as IM
---import Data.Int
 import Data.Word
 import Data.Char (ord)
 
@@ -79,7 +78,7 @@ instance Show WAVEDE where
   show a = "Type: " ++ show (wavedeType a) ++ " :: Length: " ++
             show (wavedeCount a)
 
-type MEnumeratorMM sfrom sto m a = MIteratee sto m a -> MIteratee sfrom m a
+type MEnumeratorMM sfrom sto m a = MIteratee sto m a -> m (MIteratee sfrom m a)
 
 data WAVEDE_ENUM =
   WEN_BYTE  (forall a m s. (MonadCatchIO m, Functor m) =>
@@ -213,7 +212,7 @@ readValue dict offset WAVE_DATA count = do
   fmt_m <- dictReadLastFormat dict
   case fmt_m of
     Just fmt ->
-      fmt `seq` (return . Just . WEN_DUB $ \iter_dub -> do
+      fmt `seq` (return . Just . WEN_DUB $ \iter_dub -> return $ do
         MIteratee $ Itr.seek (8 + fromIntegral offset)
         offp <- lift $ new 0
         bufp <- lift $ mallocArray defaultChunkLength
@@ -226,13 +225,13 @@ readValue dict offset WAVE_DATA count = do
 
 -- return the WaveFormat iteratee
 readValue _dict offset WAVE_FMT count =
-  return . Just . WEN_BYTE $ \iter -> do
+  return . Just . WEN_BYTE $ \iter -> return $ do
     MIteratee $ Itr.seek (8 + fromIntegral offset)
     joinIob $ MI.takeR count iter
 
 -- for WAVE_OTHER, return Word8s and maybe the user can parse them
 readValue _dict offset (WAVE_OTHER _str) count =
-  return . Just . WEN_BYTE $ \iter -> do
+  return . Just . WEN_BYTE $ \iter -> return $ do
     MIteratee $ Itr.seek (8 + fromIntegral offset)
     joinIob $ MI.takeR count iter
 
@@ -261,7 +260,7 @@ dictReadFirstFormat ::
   -> MIteratee (IOB (RegionT s m) Word8) (RegionT s m) (Maybe AudioFormat)
 dictReadFirstFormat dict = case IM.lookup (fromEnum WAVE_FMT) dict of
   Just [] -> return Nothing
-  Just ((WAVEDE _ WAVE_FMT (WEN_BYTE enum)) : _xs) -> enum sWaveFormat
+  Just ((WAVEDE _ WAVE_FMT (WEN_BYTE enum)) : _xs) -> joinIM $ enum sWaveFormat
   _ -> return Nothing
 
 -- |Read the last fromat chunk from the WAVE dictionary.  This is useful
@@ -272,8 +271,8 @@ dictReadLastFormat ::
   -> MIteratee (IOB (RegionT s m) Word8) (RegionT s m) (Maybe AudioFormat)
 dictReadLastFormat dict = case IM.lookup (fromEnum WAVE_FMT) dict of
   Just [] -> return Nothing
-  Just xs -> let (WAVEDE _ WAVE_FMT (WEN_BYTE enum)) = last xs in
-    enum sWaveFormat
+  Just xs -> let (WAVEDE _ WAVE_FMT (WEN_BYTE enum)) = last xs
+             in joinIM $ enum sWaveFormat
   _ -> return Nothing
 
 -- |Read the specified format chunk from the WAVE dictionary
@@ -284,7 +283,7 @@ dictReadFormat ::
   -> MIteratee (IOB (RegionT s m) Word8) (RegionT s m) (Maybe AudioFormat)
 dictReadFormat ix dict = case IM.lookup (fromEnum WAVE_FMT) dict of
   Just xs -> let (WAVEDE _ WAVE_FMT (WEN_BYTE enum)) = xs !! ix
-             in enum sWaveFormat
+             in joinIM $ enum sWaveFormat
   _ -> return Nothing
 
 -- |Read the specified data chunk from the dictionary, applying the
@@ -296,8 +295,8 @@ dictProcessData ::
   -> MIteratee (IOB (RegionT s m) Double) (RegionT s m) a
   -> MIteratee (IOB (RegionT s m) Word8) (RegionT s m) (Maybe a)
 dictProcessData ix dict iter = case IM.lookup (fromEnum WAVE_DATA) dict of
-  Just xs -> let (WAVEDE _ WAVE_DATA (WEN_DUB enum)) = (!!) xs ix in
-    fmap Just (enum iter)
+  Just xs -> let (WAVEDE _ WAVE_DATA (WEN_DUB enum)) = (!!) xs ix
+             in fmap Just . joinIM $ (enum iter)
   _ -> return Nothing
 
 -- | Get the length of data in a dictionary chunk, in bytes.
