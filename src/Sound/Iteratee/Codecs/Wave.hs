@@ -186,10 +186,10 @@ loadDict = P.foldl read_entry (return (Just IM.empty))
     maybe (return Nothing) (\dict -> do
       enum_m <- readValue dict offset typ count
       case (enum_m, IM.lookup (fromEnum typ) dict) of
-        (Just enum, Nothing) -> --insert new entry
+        (Just enum, Nothing) -> --last entry
           return . Just $ IM.insert (fromEnum typ)
                                     [WAVEDE (fromIntegral count) typ enum] dict
-        (Just enum, Just _vals) -> --existing entry
+        (Just enum, Just _vals) -> --more entries to come
           return . Just $ IM.update
             (\ls -> Just $ ls ++ [WAVEDE (fromIntegral count) typ enum])
             (fromEnum typ) dict
@@ -206,8 +206,6 @@ readValue ::
 readValue _dict offset _ 0 = MIteratee . throwErr . iterStrExc $
   "Zero count in the entry of chunk at: " ++ show offset
 
--- TODO: In order to return a partial iteratee (rather than a full value),
--- I can't use joinI because that sends EOF to the inner stream.
 readValue dict offset WAVE_DATA count = do
   fmt_m <- dictReadLastFormat dict
   case fmt_m of

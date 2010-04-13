@@ -82,7 +82,7 @@ unroller wSize = liftI step
          h' <- liftIO $ convert_vec h
          idone (Just h') (I.Chunk t)
   step' _i stream  = idone Nothing stream
-  convert_vec vec  = hostToLE (IB.castBuffer vec)
+  convert_vec vec  = IB.castBuffer vec >>= hostToLE
 
 hostToLE :: (Monad m, Storable a) => IOB r a -> m (IOB r a)
 hostToLE vec = let be' = unsafePerformIO be in case be' of
