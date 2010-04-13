@@ -62,4 +62,4 @@ type FrameCount  = Integer
 data SupportedBitDepths = Any | Supported [BitDepth]
 
 defaultChunkLength :: Int
-defaultChunkLength = 8192
+defaultChunkLength = 8190
