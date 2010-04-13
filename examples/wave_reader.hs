@@ -38,7 +38,7 @@ test Nothing = liftIO $ putStrLn "No dictionary"
 test (Just dict) = do
   fmtm <- dictReadFirstFormat dict
   liftIO . putStrLn $ show fmtm
-  maxm <- dictProcessData 0 dict max_iter
+  maxm <- dictProcessData_ 0 dict max_iter
   liftIO . putStrLn $ show maxm
   return ()
 
