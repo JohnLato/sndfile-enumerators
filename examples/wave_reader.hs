@@ -5,15 +5,16 @@ module Main where
 
 import Prelude as P
 
-import Data.Iteratee
 import Sound.Iteratee.Codecs.Wave
-import qualified Data.StorableVector as SV
+import Data.MutableIter
+import Data.MutableIter.IOBuffer (IOBuffer)
+import qualified Data.MutableIter.IOBuffer as IB
 import qualified Data.IntMap as IM
+import qualified Data.Iteratee as I
 import Data.Word (Word8)
+import Control.Monad.CatchIO
 import Control.Monad.Trans
 import System
-
-type V = SV.Vector
 
 main :: IO ()
 main = do
@@ -22,7 +23,7 @@ main = do
     [] -> putStrLn "Usage: wave_reader FileName"
     fname:xs -> do
       putStrLn $ "Reading file: " ++ fname
-      fileDriverRandom (waveReader >>= test) fname
+      fileDriverRandom 8192 (waveReader >>= test) fname
       return ()
 
 -- Use the collection of [WAVEDE] returned from waveReader to
@@ -31,27 +32,25 @@ main = do
 -- format information, then use the dictProcessData function
 -- to enumerate over the max_iter iteratee to find the maximum value
 -- (peak amplitude) in the file.
-test :: Maybe (IM.IntMap [WAVEDE]) -> IterateeG V Word8 IO ()
-test Nothing = lift $ putStrLn "No dictionary"
+test :: Maybe (IM.IntMap [WAVEDE])
+  -> MIteratee (IOBuffer r Word8) IO ()
+test Nothing = liftIO $ putStrLn "No dictionary"
 test (Just dict) = do
   fmtm <- dictReadFirstFormat dict
-  lift . putStrLn $ show fmtm
+  liftIO . putStrLn $ show fmtm
   maxm <- dictProcessData 0 dict max_iter
-  --maxm <- dictProcessData 0 dict max2
-  lift . putStrLn $ show maxm
+  liftIO . putStrLn $ show maxm
   return ()
 
+max_iter2 :: MonadCatchIO m => MIteratee (IOBuffer r Double) m Double
+max_iter2 = foldl' (flip (max . abs)) 0
+
 -- |This version is faster, but lower-level
-max_iter :: IterateeG V Double IO Double
+max_iter :: MIteratee (IOBuffer r Double) IO Double
 max_iter = m' 0
   where
-  m' acc = IterateeG (step acc)
-  step acc (Chunk xs) | SV.null xs = return $ Cont (m' acc) Nothing
-  step acc (Chunk xs) = return $ Cont
-                        (m' $! SV.foldl' (flip (max . abs)) acc xs)
-                        Nothing
-  step acc str = return $ Done acc str
-
--- |This version is slower, but higher-level.
-max2 :: IterateeG V Double IO Double
-max2 = foldl' (\a b -> max (abs a) b) 0
+    m' !acc = liftI (step acc)
+    step acc (I.Chunk buf) = guardNull buf (m' acc) $ do
+      val <- lift $ IB.foldl' (flip (max . abs)) acc buf
+      m' val
+    step acc str = idone acc str

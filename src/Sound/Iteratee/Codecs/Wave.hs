@@ -54,10 +54,10 @@ import Data.Char (ord)
 
 import Control.Monad.CatchIO
 import Control.Monad.Trans
-import Control.Monad.Trans.Region
 
-import Foreign.Marshal.Utils.Region
-import Foreign.Marshal.Array.Region
+import Foreign.Marshal.Utils
+import Foreign.Marshal.Array
+import Foreign.ForeignPtr
 
 -- =====================================================
 -- WAVE libary code
@@ -81,12 +81,10 @@ instance Show WAVEDE where
 type MEnumeratorMM sfrom sto m a = MIteratee sto m a -> m (MIteratee sfrom m a)
 
 data WAVEDE_ENUM =
-  WEN_BYTE  (forall a m s. (MonadCatchIO m, Functor m) =>
-              MEnumeratorMM (IOB (RegionT s m) Word8)
-                            (IOB (RegionT s m) Word8) (RegionT s m) a)
-  | WEN_DUB (forall a m s. (MonadCatchIO m, Functor m) =>
-              MEnumeratorMM (IOB (RegionT s m) Word8)
-                            (IOB (RegionT s m) Double) (RegionT s m) a)
+  WEN_BYTE  (forall a m r. (MonadCatchIO m, Functor m) =>
+              MEnumeratorMM (IOB r Word8) (IOB r Word8) m a)
+  | WEN_DUB (forall a m r. (MonadCatchIO m, Functor m) =>
+              MEnumeratorMM (IOB r Word8) (IOB r Double) m a)
 
 -- |Standard WAVE Chunks
 data WAVE_CHUNK = WAVE_FMT -- ^Format
@@ -124,7 +122,7 @@ chunkToString (WAVE_OTHER str) = str
 -- |The library function to read the WAVE dictionary
 waveReader ::
  (MonadCatchIO m, Functor m) =>
-   MIteratee (IOB (RegionT s m) Word8) (RegionT s m) (Maybe WAVEDict)
+   MIteratee (IOB r Word8) m (Maybe WAVEDict)
 waveReader = do
   readRiff
   tot_size <- endianRead4 LSB
@@ -133,7 +131,7 @@ waveReader = do
   loadDict $ joinMaybe chunks_m
 
 -- |Read the RIFF header of a file.
-readRiff :: MonadCatchIO m => MIteratee (IOB m Word8) m ()
+readRiff :: MonadCatchIO m => MIteratee (IOB r Word8) m ()
 readRiff = do
   cnt <- heads $ fmap (fromIntegral . ord) "RIFF"
   case cnt of
@@ -141,7 +139,7 @@ readRiff = do
     _ -> MIteratee . throwErr . iterStrExc $ "Bad RIFF header: "
 
 -- | Read the WAVE part of the RIFF header.
-readRiffWave :: MonadCatchIO m => MIteratee (IOB m Word8) m ()
+readRiffWave :: MonadCatchIO m => MIteratee (IOB r Word8) m ()
 readRiffWave = do
   cnt <- heads $ fmap (fromIntegral . ord) "WAVE"
   case cnt of
@@ -153,7 +151,7 @@ readRiffWave = do
 findChunks ::
  MonadCatchIO m =>
   Int
-  -> MIteratee (IOB m Word8) m (Maybe [(Int, WAVE_CHUNK, Int)])
+  -> MIteratee (IOB r Word8) m (Maybe [(Int, WAVE_CHUNK, Int)])
 findChunks n = findChunks' 12 []
   where
   findChunks' offset acc = do
@@ -179,7 +177,7 @@ findChunks n = findChunks' 12 []
 loadDict ::
  (MonadCatchIO m, Functor m) =>
   [(Int, WAVE_CHUNK, Int)]
-  -> MIteratee (IOB (RegionT s m) Word8) (RegionT s m) (Maybe WAVEDict)
+  -> MIteratee (IOB r Word8) m (Maybe WAVEDict)
 loadDict = P.foldl read_entry (return (Just IM.empty))
   where
   read_entry dictM (offset, typ, count) = dictM >>=
@@ -202,7 +200,7 @@ readValue ::
   -> Int -- ^ Offset
   -> WAVE_CHUNK -- ^ Chunk type
   -> Int -- ^ Count
-  -> MIteratee (IOB (RegionT s m) Word8) (RegionT s m) (Maybe WAVEDE_ENUM)
+  -> MIteratee (IOB r Word8) m (Maybe WAVEDE_ENUM)
 readValue _dict offset _ 0 = MIteratee . throwErr . iterStrExc $
   "Zero count in the entry of chunk at: " ++ show offset
 
@@ -214,8 +212,8 @@ readValue dict offset WAVE_DATA count = do
     Just fmt ->
       fmt `seq` (return . Just . WEN_DUB $ \iter_dub -> return $ do
         MIteratee $ Itr.seek (8 + fromIntegral offset)
-        offp <- lift $ new 0
-        bufp <- lift $ mallocArray defaultChunkLength
+        offp <- liftIO $ new 0 >>= newForeignPtr_
+        bufp <- liftIO $ mallocArray defaultChunkLength >>= newForeignPtr_
         let iter = convStream (convFunc fmt offp bufp) iter_dub
         joinIob . joinIob . takeR count $ iter
       )
@@ -237,7 +235,7 @@ readValue _dict offset (WAVE_OTHER _str) count =
 
 -- |An Iteratee to read a wave format chunk
 sWaveFormat :: MonadCatchIO m =>
-  MIteratee (IOB (RegionT s m) Word8) (RegionT s m) (Maybe AudioFormat)
+  MIteratee (IOB r Word8) m (Maybe AudioFormat)
 sWaveFormat = do
   f' <- endianRead2 LSB
   nc <- endianRead2 LSB
@@ -257,7 +255,7 @@ sWaveFormat = do
 dictReadFirstFormat ::
  (MonadCatchIO m, Functor m) =>
   WAVEDict
-  -> MIteratee (IOB (RegionT s m) Word8) (RegionT s m) (Maybe AudioFormat)
+  -> MIteratee (IOB r Word8) m (Maybe AudioFormat)
 dictReadFirstFormat dict = case IM.lookup (fromEnum WAVE_FMT) dict of
   Just [] -> return Nothing
   Just ((WAVEDE _ WAVE_FMT (WEN_BYTE enum)) : _xs) -> joinIM $ enum sWaveFormat
@@ -268,7 +266,7 @@ dictReadFirstFormat dict = case IM.lookup (fromEnum WAVE_FMT) dict of
 dictReadLastFormat ::
  (MonadCatchIO m, Functor m) =>
   WAVEDict
-  -> MIteratee (IOB (RegionT s m) Word8) (RegionT s m) (Maybe AudioFormat)
+  -> MIteratee (IOB r Word8) m (Maybe AudioFormat)
 dictReadLastFormat dict = case IM.lookup (fromEnum WAVE_FMT) dict of
   Just [] -> return Nothing
   Just xs -> let (WAVEDE _ WAVE_FMT (WEN_BYTE enum)) = last xs
@@ -280,7 +278,7 @@ dictReadFormat ::
  (MonadCatchIO m, Functor m) =>
   Int -- ^ Index in the format chunk list to read
   -> WAVEDict -- ^ Dictionary
-  -> MIteratee (IOB (RegionT s m) Word8) (RegionT s m) (Maybe AudioFormat)
+  -> MIteratee (IOB r Word8) m (Maybe AudioFormat)
 dictReadFormat ix dict = case IM.lookup (fromEnum WAVE_FMT) dict of
   Just xs -> let (WAVEDE _ WAVE_FMT (WEN_BYTE enum)) = xs !! ix
              in joinIM $ enum sWaveFormat
@@ -292,8 +290,8 @@ dictProcessData ::
  (MonadCatchIO m, Functor m) =>
   Int -- ^ Index in the data chunk list to read
   -> WAVEDict -- ^ Dictionary
-  -> MIteratee (IOB (RegionT s m) Double) (RegionT s m) a
-  -> MIteratee (IOB (RegionT s m) Word8) (RegionT s m) (Maybe a)
+  -> MIteratee (IOB r Double) m a
+  -> MIteratee (IOB r Word8) m (Maybe a)
 dictProcessData ix dict iter = case IM.lookup (fromEnum WAVE_DATA) dict of
   Just xs -> let (WAVEDE _ WAVE_DATA (WEN_DUB enum)) = (!!) xs ix
              in fmap Just . joinIM $ (enum iter)
@@ -324,7 +322,7 @@ dictGetLengthSamples af ix dict = IM.lookup (fromEnum WAVE_DATA) dict >>= \xs ->
 dictSoundInfo ::
  (MonadCatchIO m, Functor m) =>
   WAVEDict
-  -> MIteratee (IOB (RegionT s m) Word8) (RegionT s m)
+  -> MIteratee (IOB r Word8) m
       (Maybe (AudioFormat, Integer))
 dictSoundInfo dict = do
   fmtm <- dictReadFirstFormat dict

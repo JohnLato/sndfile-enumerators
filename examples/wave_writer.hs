@@ -3,16 +3,14 @@
 {-# LANGUAGE BangPatterns #-}
 module Main where
 
-import Data.Iteratee
+import Data.MutableIter
+import qualified Data.MutableIter.IOBuffer as IB
 import Sound.Iteratee.Codecs.Wave
 import Sound.Iteratee
-import qualified Data.StorableVector as SV
 import qualified Data.IntMap as IM
 import Data.Word (Word8)
 import Control.Monad.Trans
 import System
-
-type V = SV.Vector
 
 main :: IO ()
 main = do
@@ -31,7 +29,7 @@ main = do
 -- format information, then use the dictProcessData function
 -- to enumerate over the max_iter iteratee to find the maximum value
 -- (peak amplitude) in the file.
-writer :: FilePath -> Maybe (IM.IntMap [WAVEDE]) -> IterateeG V Word8 AudioMonad ()
+writer :: FilePath -> Maybe (IM.IntMap [WAVEDE]) -> MIteratee (IB.IOBuffer r Word8) AudioMonad ()
 writer _ Nothing = liftIO $ putStrLn "No dictionary"
 writer fp (Just dict) = do
   fmtm <- dictReadFirstFormat dict
@@ -41,9 +39,3 @@ writer fp (Just dict) = do
         fmtm
   return ()
 
--- |Write an empty wave file to the specified file
-writer2 :: FilePath -> IterateeG V Double AudioMonad ()
-writer2 fp = do
-  let fmt = AudioFormat 2 44100 16
-  joinIM $ enumPure1Chunk SV.empty $ writeWave fp fmt
-  return ()

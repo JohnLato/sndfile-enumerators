@@ -23,16 +23,17 @@ import Data.MutableIter.IOBuffer (IOBuffer, hPut, mapBuffer)
 import qualified Data.Iteratee as I
 import Data.Int
 import Data.Int.Int24
+import Data.Word (Word8)
 import qualified Data.ByteString.Lazy as LB
 import qualified Data.ByteString.Char8 as BC
 import qualified Data.Binary.Put as P
 import Control.Monad
 import Control.Monad.Trans
 import Control.Monad.CatchIO
-import Foreign.Marshal.Utils.Region as UR
-import Foreign.Marshal.Array.Region
-import Foreign.Ptr.Region
-import Foreign.Storable.Region as SR
+import Foreign.Marshal.Utils as U
+import Foreign.Marshal.Array
+import Foreign.ForeignPtr
+import Foreign.Storable as S
 
 import Foreign.Storable
 import System.IO
@@ -58,19 +59,16 @@ instance WritableAudio WaveCodec where
 writeWave ::
   FilePath
   -> AudioFormat
-  -> MIteratee (IOBuffer (RegionT s AudioMonad) Double)
-               (RegionT s AudioMonad)
-               ()
+  -> MIteratee (IOBuffer r Double) AudioMonad ()
 writeWave fp af = do
-  lift . lift $ openWave fp
-  lift . lift $ writeFormat af
-  lift . lift $ writeDataHeader
-  offp <- lift $ new 0
-  bufp <- lift $ mallocArray defaultChunkLength
-  (a :: Int8) <- lift $ SR.peek bufp
+  lift $ openWave fp
+  lift $ writeFormat af
+  lift $ writeDataHeader
+  offp <- liftIO $ new 0 >>= newForeignPtr_
+  bufp <- liftIO $ (mallocArray defaultChunkLength >>= newForeignPtr_ :: IO (ForeignPtr Word8))
   loop offp bufp
-  lift . lift $ closeWave
-  lift . lift $ put NoState
+  lift $ closeWave
+  lift $ put NoState
   where
     loop offp bufp = liftI (step offp bufp)
     step offp bufp (I.Chunk buf) = guardNull buf (loop offp bufp) $ do
@@ -112,17 +110,17 @@ writeDataHeader = do
 
 -- |Write a data chunk.
 writeDataChunk :: (Integral a, Bounded a, Storable a) =>
-  RegionalPtr Int (RegionT s AudioMonad)
-  -> RegionalPtr a (RegionT s AudioMonad)
-  -> IOBuffer (RegionT s AudioMonad) Double
-  -> RegionT s AudioMonad ()
+  ForeignPtr Int
+  -> ForeignPtr a
+  -> IOBuffer r Double
+  -> AudioMonad ()
 writeDataChunk offp bufp buf = do
-  as <- lift get
+  as <- get
   case as of
     WaveState (Just h) (Just af) i i' off -> do
-      len <- liftM fromIntegral $ getLength af
-      putVec af h buf
-      lift . put $ WaveState (Just h) (Just af) (i + len) (i' + len) off
+      len <- liftIO . liftM fromIntegral $ getLength af
+      liftIO $ putVec af h buf
+      put $ WaveState (Just h) (Just af) (i + len) (i' + len) off
     WaveState Nothing  _       _ _ _  -> error "Can't write: no file opened"
     WaveState _        Nothing _ _ _  -> error "No format specified"
     _                                 -> error "Can't write: not a WAVE file"
@@ -144,8 +142,8 @@ i24 = 0
 i32 :: Int32
 i32 = 0
 
-myCastPtr :: a -> RegionalPtr b m -> RegionalPtr a m
-myCastPtr elt = castPtr
+myCastPtr :: a -> ForeignPtr el -> ForeignPtr a
+myCastPtr _ = castForeignPtr
 
 closeWave :: AudioMonad ()
 closeWave = do
@@ -193,12 +191,12 @@ writeDataRaw = do
 -- Data normalization and conversion functions
 
 convertVector ::
-  (MonadCatchIO pr, Integral a, Storable a, Bounded a) =>
+  (Integral a, Storable a, Bounded a) =>
   AudioFormat
-  -> RegionalPtr Int (RegionT s pr)
-  -> RegionalPtr a   (RegionT s pr)
-  -> IOBuffer (RegionT s pr) Double
-  -> RegionT s pr (IOBuffer (RegionT s pr) a)
+  -> ForeignPtr Int
+  -> ForeignPtr a
+  -> IOBuffer r Double
+  -> IO (IOBuffer r a)
 convertVector (AudioFormat _nc _sr bd ) = mapBuffer (unNormalize bd)
 
 -- 8 bits are handled separately because (at least in wave) they aren't 2's

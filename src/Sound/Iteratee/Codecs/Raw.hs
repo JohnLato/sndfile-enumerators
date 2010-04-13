@@ -13,10 +13,10 @@ import qualified Data.MutableIter.IOBuffer as IB
 import Data.Word
 import Control.Monad.CatchIO
 import Control.Monad.Trans
-import Control.Monad.Trans.Region
 
-import Foreign.Marshal.Utils.Region
-import Foreign.Marshal.Array.Region
+import Foreign.Marshal.Utils
+import Foreign.Marshal.Array
+import Foreign.ForeignPtr
 
 type IOB = IB.IOBuffer
 
@@ -31,10 +31,10 @@ instance WritableAudio RawCodec where
 readRaw ::
  (MonadCatchIO m, Functor m) =>
   AudioFormat
-  -> MIteratee (IOB (RegionT s m) Double) (RegionT s m) a
-  -> MIteratee (IOB (RegionT s m) Word8) (RegionT s m) a
+  -> MIteratee (IOB r Double) m a
+  -> MIteratee (IOB r Word8) m a
 readRaw fmt iter_dub = do
-  offp <- lift $ new 0
-  bufp <- lift $ mallocArray defaultChunkLength
+  offp <- liftIO $ new 0 >>= newForeignPtr_
+  bufp <- liftIO $ mallocArray defaultChunkLength >>= newForeignPtr_
   joinIob . convStream (convFunc fmt offp bufp) $ iter_dub
 

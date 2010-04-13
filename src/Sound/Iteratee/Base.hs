@@ -54,10 +54,6 @@ data AudioFormat = AudioFormat {
   bitDepth :: BitDepth -- ^Bit depth of the audio data
   } deriving (Show, Eq)
 
-instance DeepSeq AudioFormat where
-  deepseq (AudioFormat nc sr bd) =
-    deepseq nc `seq` deepseq sr `seq` deepseq bd `seq` ()
-
 type NumChannels = Integer
 type SampleRate  = Integer
 type BitDepth    = Integer

@@ -11,10 +11,8 @@ import qualified Data.Iteratee as I
 import Data.MutableIter as Iter
 import qualified Data.MutableIter.IOBuffer as IB
 import Data.MutableIter.IOBuffer (IOBuffer)
-import Foreign.Ptr.Region
-import Foreign.Storable (Storable, sizeOf)
-import qualified Foreign.Storable as FS
-import Foreign.Storable.Region
+import Foreign.ForeignPtr
+import Foreign.Storable
 import qualified Foreign.Marshal.Utils as FMU
 import Control.Monad.CatchIO
 import Control.Monad.Trans
@@ -33,10 +31,10 @@ type IOB m el = IOBuffer m el
 
 -- determine host endian-ness
 be :: IO Bool
-be = fmap (==1) $ FMU.with (1 :: Word16) (\p -> FS.peekByteOff p 1 :: IO Word8)
+be = fmap (==1) $ FMU.with (1 :: Word16) (\p -> peekByteOff p 1 :: IO Word8)
 
 -- convenience function to read a 4-byte ASCII string
-stringRead4 :: MonadCatchIO m => MIteratee (IOB m Word8) m (String)
+stringRead4 :: MonadCatchIO m => MIteratee (IOB r Word8) m (String)
 stringRead4 = do
   s1 <- Iter.head
   s2 <- Iter.head
@@ -44,7 +42,7 @@ stringRead4 = do
   s4 <- Iter.head
   return $ map (chr . fromIntegral) [s1, s2, s3, s4]
 
-unroll8 :: (MonadCatchIO m) => MIteratee (IOB m Word8) m (Maybe (IOB m Word8))
+unroll8 :: (MonadCatchIO m) => MIteratee (IOB r Word8) m (Maybe (IOB r Word8))
 unroll8 = liftI step
   where
   step (I.Chunk buf) = guardNull buf (liftI step) $
@@ -56,37 +54,37 @@ unroll8 = liftI step
 {-# RULES "unroll8" forall n. unroller n = unroll8 #-}
 unroller :: (Storable a, MonadCatchIO m) =>
   Int
-  -> MIteratee (IOB (RegionT s m) Word8) (RegionT s m) (Maybe (IOB (RegionT s m) a))
+  -> MIteratee (IOB r Word8) m (Maybe (IOB r a))
 unroller wSize = liftI step
   where
   step (I.Chunk buf) = guardNull buf (liftI step) $ do
-    len <- lift $ IB.length buf
+    len <- liftIO $ IB.length buf
     if len < wSize then liftI (step' buf)
       else if len `rem` wSize == 0
               then do
-                buf' <- lift $ convert_vec buf
+                buf' <- liftIO $ convert_vec buf
                 idone (Just buf') (I.Chunk IB.empty)
               else let newLen = (len `div` wSize) * wSize
                    in do
-                      (h, t) <- lift $ IB.splitAt buf newLen
-                      h' <- lift $ convert_vec h
+                      (h, t) <- liftIO $ IB.splitAt buf newLen
+                      h' <- liftIO $ convert_vec h
                       idone (Just h') (I.Chunk t)
   step stream = idone Nothing stream
   step' i (I.Chunk buf) = guardNull buf (liftI (step' i)) $ do
-    l <- lift $ IB.length buf
-    iLen <- lift $ IB.length i
-    newbuf <- lift $ IB.append i buf
+    l <- liftIO $ IB.length buf
+    iLen <- liftIO $ IB.length i
+    newbuf <- liftIO $ IB.append i buf
     if l+iLen < wSize then liftI (step' newbuf)
        else do
-         newLen <- lift $ IB.length newbuf
+         newLen <- liftIO $ IB.length newbuf
          let newLen' = (newLen `div` wSize) * wSize
-         (h,t) <- lift $ IB.splitAt newbuf newLen'
-         h' <- lift $ convert_vec h
+         (h,t) <- liftIO $ IB.splitAt newbuf newLen'
+         h' <- liftIO $ convert_vec h
          idone (Just h') (I.Chunk t)
   step' _i stream  = idone Nothing stream
   convert_vec vec  = hostToLE (IB.castBuffer vec)
 
-hostToLE :: (Monad m, Storable a) => IOB m a -> m (IOB m a)
+hostToLE :: (Monad m, Storable a) => IOB r a -> m (IOB r a)
 hostToLE vec = let be' = unsafePerformIO be in case be' of
     True -> error "wrong endian-ness.  Ask the maintainer to implement hostToLE"
 {-
@@ -104,8 +102,8 @@ hostToLE vec = let be' = unsafePerformIO be in case be' of
         loop wSize fp (len - 1) (off + 1)
 -}
 
-swapBytes :: MonadIO pr => Int -> RegionalPtr a pr -> pr ()
-swapBytes wSize p = case wSize of
+swapBytes :: Int -> ForeignPtr a -> IO ()
+swapBytes wSize fp = withForeignPtr fp $ \p -> case wSize of
   1 -> return ()
   2 -> do
     (w1 :: Word8) <- peekByteOff p 0
@@ -140,26 +138,24 @@ w32 = 0
 -- |Convert Word8s to Doubles
 convFunc :: (MonadCatchIO m) =>
   AudioFormat
-  -> RegionalPtr Int (RegionT s m)
-  -> RegionalPtr Double (RegionT s m)
-  -> MIteratee (IOBuffer (RegionT s m) Word8)
-               (RegionT s m)
-               (IOBuffer (RegionT s m) Double)
+  -> ForeignPtr Int
+  -> ForeignPtr Double
+  -> MIteratee (IOBuffer r Word8) m (IOBuffer r Double)
 convFunc (AudioFormat _nc _sr 8) offp bufp = do
   mbuf <- unroll8
-  lift $ maybe (error "error in convFunc") (IB.mapBuffer
+  liftIO $ maybe (error "error in convFunc") (IB.mapBuffer
     (normalize 8 . (fromIntegral :: Word8 -> Int8)) offp bufp) mbuf
 convFunc (AudioFormat _nc _sr 16) offp bufp = do
   mbuf <- unroller (sizeOf w16)
-  lift $ maybe (error "error in convFunc") (IB.mapBuffer
+  liftIO $ maybe (error "error in convFunc") (IB.mapBuffer
     (normalize 16 . (fromIntegral :: Word16 -> Int16)) offp bufp) mbuf
 convFunc (AudioFormat _nc _sr 24) offp bufp = do
   mbuf <- unroller (sizeOf w24)
-  lift $ maybe (error "error in convFunc") (IB.mapBuffer
+  liftIO $ maybe (error "error in convFunc") (IB.mapBuffer
     (normalize 24 . (fromIntegral :: Word24 -> Int24)) offp bufp) mbuf
 convFunc (AudioFormat _nc _sr 32) offp bufp = do
   mbuf <- unroller (sizeOf w32)
-  lift $ maybe (error "error in convFunc") (IB.mapBuffer
+  liftIO $ maybe (error "error in convFunc") (IB.mapBuffer
     (normalize 32 . (fromIntegral :: Word32 -> Int32)) offp bufp) mbuf
 convFunc _ _ _ = MIteratee $ I.throwErr (I.iterStrExc "Invalid wave bit depth")
 
