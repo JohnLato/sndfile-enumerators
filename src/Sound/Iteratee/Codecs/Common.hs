@@ -57,7 +57,7 @@ unroller wSize = liftI step
   where
   step (I.Chunk buf) = guardNull buf (liftI step) $ do
     len <- liftIO $ IB.length buf
-    if len < wSize then liftI (step' buf)
+    if len < wSize then liftIO (IB.copyBuffer buf) >>= liftI . step'
       else if len `rem` wSize == 0
               then do
                 buf' <- liftIO $ convert_vec buf
