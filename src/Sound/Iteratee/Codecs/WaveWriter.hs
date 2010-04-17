@@ -207,14 +207,19 @@ unNormalize _bd a = let
   negMult = abs $ fromIntegral (minBound :: a)
   in
   case (a >= 0) of
-    True  -> fromIntegral . roundDouble . (* posMult) . clip $ a
-    False -> fromIntegral . roundDouble . (* negMult) . clip $ a
+    True  -> fromIntegral . roundDoublePos . (* posMult) . clip $ a
+    False -> fromIntegral . roundDoubleNeg . (* negMult) . clip $ a
 
 clip :: Double -> Double
 clip = max (-1) . min 1
 
-roundDouble :: Double -> Int
-roundDouble x = case (x >= 0.5) of
-  True -> double2Int (x + 0.5)
-  False -> double2Int (x - 0.5)
+roundDoublePos :: Double -> Int
+roundDoublePos x = let b = double2Int x in if x - int2Double b >= 0.5
+  then b+1
+  else b
+
+roundDoubleNeg :: Double -> Int
+roundDoubleNeg x = let b = double2Int x in if x - int2Double b <= -0.5
+  then b-1
+  else b
 
