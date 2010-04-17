@@ -1,7 +1,9 @@
+{-# LANGUAGE ScopedTypeVariables #-}
+
 module Sound.Iteratee.Codecs.Common (
-  stringRead4,
-  joinMaybe,
-  convFunc
+  stringRead4
+ ,joinMaybe
+ ,convFunc
 )
   
 where

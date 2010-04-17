@@ -23,7 +23,6 @@ where
 import Prelude as P
 
 import Control.Monad.Trans.State
-import Control.DeepSeq
 import System.IO
 
 -- |Information about the AudioStream

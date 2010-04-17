@@ -29,13 +29,11 @@ import qualified Data.ByteString.Char8 as BC
 import qualified Data.Binary.Put as P
 import Control.Monad
 import Control.Monad.Trans
-import Control.Monad.CatchIO
 import Foreign.Marshal.Utils as U
 import Foreign.Marshal.Array
 import Foreign.ForeignPtr
 import Foreign.Storable as S
 
-import Foreign.Storable
 import System.IO
 
 import GHC.Float
