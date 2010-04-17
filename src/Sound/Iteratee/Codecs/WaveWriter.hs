@@ -61,11 +61,12 @@ writeWave ::
 writeWave fp af = do
   lift $ openWave fp
   lift $ writeFormat af
-  lift $ writeDataHeader
-  offp <- liftIO $ new 0 >>= newForeignPtr_
-  bufp <- liftIO $ (mallocArray defaultChunkLength >>= newForeignPtr_ :: IO (ForeignPtr Word8))
+  lift writeDataHeader
+  offp <- liftIO (new 0 >>= newForeignPtr_)
+  bufp <- liftIO (mallocArray defaultChunkLength >>=
+                  newForeignPtr_ :: IO (ForeignPtr Word8))
   loop offp bufp
-  lift $ closeWave
+  lift closeWave
   lift $ put NoState
   where
     loop offp bufp = liftI (step offp bufp)
@@ -206,9 +207,9 @@ unNormalize _bd a = let
   --input is already neg., so negMult needs to be positive to preserve sign
   negMult = abs $ fromIntegral (minBound :: a)
   in
-  case (a >= 0) of
-    True  -> fromIntegral . roundDoublePos . (* posMult) . clip $ a
-    False -> fromIntegral . roundDoubleNeg . (* negMult) . clip $ a
+  if a >= 0
+    then fromIntegral . roundDoublePos . (* posMult) . clip $ a
+    else fromIntegral . roundDoubleNeg . (* negMult) . clip $ a
 
 clip :: Double -> Double
 clip = max (-1) . min 1

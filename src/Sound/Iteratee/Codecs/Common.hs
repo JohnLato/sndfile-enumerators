@@ -16,6 +16,7 @@ import Data.MutableIter.IOBuffer (IOBuffer)
 import Foreign.ForeignPtr
 import Foreign.Storable
 import qualified Foreign.Marshal.Utils as FMU
+import Control.Monad (replicateM, liftM)
 import Control.Monad.CatchIO
 import Control.Monad.Trans
 import Data.Char (chr)
@@ -36,13 +37,8 @@ be :: IO Bool
 be = fmap (==1) $ FMU.with (1 :: Word16) (\p -> peekByteOff p 1 :: IO Word8)
 
 -- convenience function to read a 4-byte ASCII string
-stringRead4 :: MonadCatchIO m => MIteratee (IOB r Word8) m (String)
-stringRead4 = do
-  s1 <- Iter.head
-  s2 <- Iter.head
-  s3 <- Iter.head
-  s4 <- Iter.head
-  return $ map (chr . fromIntegral) [s1, s2, s3, s4]
+stringRead4 :: MonadCatchIO m => MIteratee (IOB r Word8) m String
+stringRead4 = (liftM . map) (chr . fromIntegral) $ replicateM 4 Iter.head
 
 unroll8 :: (MonadCatchIO m) => MIteratee (IOB r Word8) m (Maybe (IOB r Word8))
 unroll8 = liftI step
@@ -87,15 +83,15 @@ unroller wSize = liftI step
   convert_vec vec  = IB.castBuffer vec >>= hostToLE
 
 hostToLE :: (Monad m, Storable a) => IOB r a -> m (IOB r a)
-hostToLE vec = let be' = unsafePerformIO be in case be' of
-    True -> error "wrong endian-ness.  Ask the maintainer to implement hostToLE"
+hostToLE vec = let be' = unsafePerformIO be in if be'
+    then error "wrong endian-ness.  Ask the maintainer to implement hostToLE"
 {-
               (fp, off, len) = VB.toForeignPtr vec
               wSize = sizeOf $ Vec.head vec
             in
             loop wSize fp len off
 -}
-    False -> return vec
+    else return vec
 {-
     where
       loop _wSize _fp 0 _off = return vec

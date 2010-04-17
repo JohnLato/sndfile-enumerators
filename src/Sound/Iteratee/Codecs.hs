@@ -31,10 +31,10 @@ getWriter Raw  = error "No writer defined for Raw format"
 data Codec = forall a. WritableAudio a => Codec a
 
 instance WritableAudio Codec where
-  emptyState         (Codec a)   = emptyState a
-  initState          (Codec a) h = initState a h
-  supportedBitDepths (Codec a)   = supportedBitDepths a
-  fileType           (Codec a)   = fileType a
+  emptyState         (Codec a) = emptyState a
+  initState          (Codec a) = initState a
+  supportedBitDepths (Codec a) = supportedBitDepths a
+  fileType           (Codec a) = fileType a
 
 getCodec :: SupportedFileFormat -> Codec
 getCodec Wave = Codec WaveCodec
