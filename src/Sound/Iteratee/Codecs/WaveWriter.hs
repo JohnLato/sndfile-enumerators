@@ -28,7 +28,8 @@ import qualified Data.ByteString.Lazy as LB
 import qualified Data.ByteString.Char8 as BC
 import qualified Data.Binary.Put as P
 import Control.Monad
-import Control.Monad.Trans
+import Control.Monad.IO.Class
+import Control.Monad.Trans.Class
 import Foreign.Marshal.Utils as U
 import Foreign.Marshal.Array
 import Foreign.ForeignPtr

@@ -12,7 +12,7 @@ import qualified Data.MutableIter.IOBuffer as IB
 
 import Data.Word
 import Control.Monad.CatchIO
-import Control.Monad.Trans
+import Control.Monad.IO.Class
 
 import Foreign.Marshal.Utils
 import Foreign.Marshal.Array

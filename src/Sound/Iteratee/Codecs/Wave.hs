@@ -54,7 +54,7 @@ import Data.Word
 import Data.Char (ord)
 
 import Control.Monad.CatchIO
-import Control.Monad.Trans
+import Control.Monad.IO.Class
 
 import Foreign.Marshal.Utils
 import Foreign.Marshal.Array

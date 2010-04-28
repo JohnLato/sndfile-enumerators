@@ -18,7 +18,7 @@ import Foreign.Storable
 import qualified Foreign.Marshal.Utils as FMU
 import Control.Monad (replicateM, liftM)
 import Control.Monad.CatchIO
-import Control.Monad.Trans
+import Control.Monad.IO.Class
 import Data.Char (chr)
 import Data.Int.Int24
 import Data.Int
