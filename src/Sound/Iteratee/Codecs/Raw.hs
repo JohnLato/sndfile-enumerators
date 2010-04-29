@@ -14,8 +14,6 @@ import Data.Word
 import Control.Monad.CatchIO
 import Control.Monad.IO.Class
 
-import Foreign.Marshal.Utils
-import Foreign.Marshal.Array
 import Foreign.ForeignPtr
 
 type IOB = IB.IOBuffer
@@ -34,7 +32,7 @@ readRaw ::
   -> MIteratee (IOB r Double) m a
   -> MIteratee (IOB r Word8) m a
 readRaw fmt iter_dub = do
-  offp <- liftIO $ new 0 >>= newForeignPtr_
-  bufp <- liftIO $ mallocArray defaultChunkLength >>= newForeignPtr_
+  offp <- liftIO $ newFp 0
+  bufp <- liftIO $ mallocForeignPtrArray defaultChunkLength
   joinIob . convStream (convFunc fmt offp bufp) $ iter_dub
 

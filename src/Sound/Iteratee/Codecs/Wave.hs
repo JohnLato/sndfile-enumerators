@@ -56,8 +56,6 @@ import Data.Char (ord)
 import Control.Monad.CatchIO
 import Control.Monad.IO.Class
 
-import Foreign.Marshal.Utils
-import Foreign.Marshal.Array
 import Foreign.ForeignPtr
 
 -- =====================================================
@@ -213,8 +211,8 @@ readValue dict offset WAVEDATA count = do
     Just fmt ->
       fmt `seq` (return . Just . WENDUB $ \iter_dub -> do
         MIteratee $ Itr.seek (8 + fromIntegral offset)
-        offp <- liftIO $ new 0 >>= newForeignPtr_
-        bufp <- liftIO $ mallocArray defaultChunkLength >>= newForeignPtr_
+        offp <- liftIO $ newFp 0
+        bufp <- liftIO $ mallocForeignPtrArray defaultChunkLength
         let iter = convStream (convFunc fmt offp bufp) iter_dub
         joinIob . takeR count $ iter
       )

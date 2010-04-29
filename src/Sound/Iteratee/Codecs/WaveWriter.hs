@@ -21,19 +21,14 @@ import Data.MutableIter
 import qualified Data.MutableIter.IOBuffer as IB
 import Data.MutableIter.IOBuffer (IOBuffer, hPut, mapBuffer)
 import qualified Data.Iteratee as I
-import Data.Int
 import Data.Int.Int24
-import Data.Word (Word8)
 import qualified Data.ByteString.Lazy as LB
 import qualified Data.ByteString.Char8 as BC
 import qualified Data.Binary.Put as P
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
-import Foreign.Marshal.Utils as U
-import Foreign.Marshal.Array
-import Foreign.ForeignPtr
-import Foreign.Storable as S
+import Foreign
 
 import System.IO
 
@@ -63,9 +58,9 @@ writeWave fp af = do
   lift $ openWave fp
   lift $ writeFormat af
   lift writeDataHeader
-  offp <- liftIO (new 0 >>= newForeignPtr_)
-  bufp <- liftIO (mallocArray defaultChunkLength >>=
-                  newForeignPtr_ :: IO (ForeignPtr Word8))
+  offp <- liftIO $ newFp 0
+  bufp <- liftIO (mallocForeignPtrArray defaultChunkLength
+            :: IO (ForeignPtr Word8))
   loop offp bufp
   lift closeWave
   lift $ put NoState

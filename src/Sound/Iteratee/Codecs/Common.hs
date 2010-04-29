@@ -13,19 +13,13 @@ import qualified Data.Iteratee as I
 import Data.MutableIter as Iter
 import qualified Data.MutableIter.IOBuffer as IB
 import Data.MutableIter.IOBuffer (IOBuffer)
-import Foreign.ForeignPtr
-import Foreign.Storable
-import qualified Foreign.Marshal.Utils as FMU
+import Foreign
 import Control.Monad (replicateM, liftM)
 import Control.Monad.CatchIO
 import Control.Monad.IO.Class
 import Data.Char (chr)
 import Data.Int.Int24
-import Data.Int
-import Data.Word
 import Data.Word.Word24
-import Data.Bits (shiftL)
-import System.IO.Unsafe
 
 -- =====================================================
 -- useful type synonyms
@@ -34,7 +28,7 @@ type IOB m el = IOBuffer m el
 
 -- determine host endian-ness
 be :: IO Bool
-be = fmap (==1) $ FMU.with (1 :: Word16) (\p -> peekByteOff p 1 :: IO Word8)
+be = fmap (==1) $ with (1 :: Word16) (\p -> peekByteOff p 1 :: IO Word8)
 
 -- convenience function to read a 4-byte ASCII string
 stringRead4 :: MonadCatchIO m => MIteratee (IOB r Word8) m String
