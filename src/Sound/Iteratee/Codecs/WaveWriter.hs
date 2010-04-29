@@ -58,18 +58,13 @@ writeWave fp af = do
   lift $ openWave fp
   lift $ writeFormat af
   lift writeDataHeader
-  offp <- liftIO $ newFp 0
-  bufp <- liftIO (mallocForeignPtrArray defaultChunkLength
-            :: IO (ForeignPtr Word8))
-  loop offp bufp
+  loop
   lift closeWave
   lift $ put NoState
   where
-    loop offp bufp = liftI (step offp bufp)
-    step offp bufp (I.Chunk buf) = guardNull buf (loop offp bufp) $ do
-      lift $ writeDataChunk offp bufp buf
-      loop offp bufp
-    step _ _ stream      = idone () stream
+    loop = liftI step
+    step (I.Chunk buf) = guardNull buf loop $ lift (writeDataChunk buf) >> loop
+    step stream        = idone () stream
 
 -- |Open a wave file for writing
 openWave :: FilePath -> AudioMonad ()
@@ -104,12 +99,8 @@ writeDataHeader = do
     _                                 -> error "Can't write: not a WAVE file"
 
 -- |Write a data chunk.
-writeDataChunk :: (Integral a, Bounded a, Storable a) =>
-  ForeignPtr Int
-  -> ForeignPtr a
-  -> IOBuffer r Double
-  -> AudioMonad ()
-writeDataChunk offp bufp buf = do
+writeDataChunk :: IOBuffer r Double -> AudioMonad ()
+writeDataChunk buf = do
   as <- get
   case as of
     WaveState (Just h) (Just af) i i' off -> do
@@ -121,10 +112,10 @@ writeDataChunk offp bufp buf = do
     _                                 -> error "Can't write: not a WAVE file"
   where
     putVec af h buf' = case bitDepth af of
-      8  -> convertVector af offp (myCastPtr i8  bufp) buf' >>= hPut h
-      16 -> convertVector af offp (myCastPtr i16 bufp) buf' >>= hPut h
-      24 -> convertVector af offp (myCastPtr i24 bufp) buf' >>= hPut h
-      32 -> convertVector af offp (myCastPtr i32 bufp) buf' >>= hPut h
+      8  -> convertVector i8  af buf' >>= hPut h
+      16 -> convertVector i16 af buf' >>= hPut h
+      24 -> convertVector i24 af buf' >>= hPut h
+      32 -> convertVector i32 af buf' >>= hPut h
       x  -> error $ "Cannot write wave file: unsupported bit depth " ++ show x
     getLength af = liftM (fromIntegral (bitDepth af `div` 8) *) (IB.length buf)
 
@@ -136,9 +127,6 @@ i24 :: Int24
 i24 = 0
 i32 :: Int32
 i32 = 0
-
-myCastPtr :: a -> ForeignPtr el -> ForeignPtr a
-myCastPtr _ = castForeignPtr
 
 closeWave :: AudioMonad ()
 closeWave = do
@@ -187,12 +175,15 @@ writeDataRaw = do
 
 convertVector ::
   (Integral a, Storable a, Bounded a) =>
-  AudioFormat
-  -> ForeignPtr Int
-  -> ForeignPtr a
+  a
+  -> AudioFormat
   -> IOBuffer r Double
   -> IO (IOBuffer r a)
-convertVector (AudioFormat _nc _sr bd ) = mapBuffer (unNormalize bd)
+convertVector _ (AudioFormat _nc _sr bd) buf = do
+  offp <- newFp 0
+  l <- IB.length buf
+  obuf <- mallocForeignPtrBytes (l * sizeOf (0::Double))
+  mapBuffer (unNormalize bd) offp obuf buf
 
 -- 8 bits are handled separately because (at least in wave) they aren't 2's
 -- complement negatives.
