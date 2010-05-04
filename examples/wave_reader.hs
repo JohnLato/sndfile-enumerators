@@ -13,7 +13,8 @@ import qualified Data.IntMap as IM
 import qualified Data.Iteratee as I
 import Data.Word (Word8)
 import Control.Monad.CatchIO
-import Control.Monad.Trans
+import Control.Monad.IO.Class
+import Control.Monad.Trans.Class
 import System
 
 main :: IO ()
