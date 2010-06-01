@@ -1,4 +1,4 @@
-Name:		iter-audio
+Name:		sndfile-enumerators
 Version:        0.3.0
 Cabal-Version:  >= 1.2
 Description:	encode and decode soundfiles using Iteratees.
