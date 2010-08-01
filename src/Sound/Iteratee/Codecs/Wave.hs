@@ -214,7 +214,7 @@ readValue dict offset WAVEDATA count = do
         offp <- liftIO $ newFp 0
         bufp <- liftIO $ mallocForeignPtrArray defaultChunkLength
         let iter = convStream (convFunc fmt offp bufp) iter_dub
-        joinIob . takeR count $ iter
+        joinIob . takeUpTo count $ iter
       )
     Nothing ->
       MIteratee . throwErr . iterStrExc $
@@ -224,13 +224,13 @@ readValue dict offset WAVEDATA count = do
 readValue _dict offset WAVEFMT count =
   return . Just . WENBYTE $ \iter -> do
     MIteratee $ Itr.seek (8 + fromIntegral offset)
-    joinIob $ MI.takeR count iter
+    joinIob $ MI.takeUpTo count iter
 
 -- for WAVEOTHER, return Word8s and maybe the user can parse them
 readValue _dict offset (WAVEOTHER _str) count =
   return . Just . WENBYTE $ \iter -> do
     MIteratee $ Itr.seek (8 + fromIntegral offset)
-    joinIob $ MI.takeR count iter
+    joinIob $ MI.takeUpTo count iter
 
 -- |An Iteratee to read a wave format chunk
 sWaveFormat :: MonadCatchIO m =>
