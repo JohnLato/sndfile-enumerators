@@ -93,6 +93,7 @@ hostToLE vec = let be' = unsafePerformIO be in if be'
         loop wSize fp (len - 1) (off + 1)
 -}
 
+{-
 swapBytes :: Int -> ForeignPtr a -> IO ()
 swapBytes wSize fp = withForeignPtr fp $ \p -> case wSize of
   1 -> return ()
@@ -119,6 +120,7 @@ swapBytes wSize fp = withForeignPtr fp $ \p -> case wSize of
 
 w8 :: Word8
 w8 = 0
+-}
 w16 :: Word16
 w16 = 0
 w24 :: Word24
