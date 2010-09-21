@@ -19,7 +19,7 @@ where
 import Sound.Iteratee.Base
 import Data.MutableIter
 import qualified Data.MutableIter.IOBuffer as IB
-import Data.MutableIter.IOBuffer (IOBuffer, hPut, mapBuffer)
+import Data.MutableIter.IOBuffer (hPut, mapBuffer)
 import qualified Data.Iteratee as I
 import Data.Int.Int24
 import qualified Data.ByteString.Lazy as LB

@@ -15,7 +15,6 @@ import Sound.Iteratee.Base
 import Sound.Iteratee.Codecs
 
 import Data.MutableIter
-import Data.MutableIter.IOBuffer (IOBuffer)
 
 import Foreign.Storable (Storable)
 

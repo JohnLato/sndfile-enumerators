@@ -12,7 +12,6 @@ import Sound.Iteratee.Base
 import qualified Data.Iteratee as I
 import Data.MutableIter as Iter
 import qualified Data.MutableIter.IOBuffer as IB
-import Data.MutableIter.IOBuffer (IOBuffer)
 import Foreign
 import Control.Monad (replicateM, liftM)
 import Control.Monad.CatchIO
