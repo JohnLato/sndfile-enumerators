@@ -20,6 +20,7 @@ extra-source-files:
   LICENSE
   examples/wave_reader.hs
   examples/wave_writer.hs
+  examples/writer2.hs
 
 flag splitBase
   description: Choose the new split-up base package.
