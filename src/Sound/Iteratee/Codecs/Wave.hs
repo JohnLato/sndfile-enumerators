@@ -209,12 +209,12 @@ readValue dict offset WAVEDATA count = do
   fmt_m <- dictReadLastFormat dict
   case fmt_m of
     Just fmt ->
-      fmt `seq` (return . Just $ WENDUB $ \iter_dub -> do
+      fmt `seq` (return . Just . WENDUB $ \iter_dub -> do
         MIteratee $ Itr.seek (8 + fromIntegral offset)
         offp <- liftIO $ newFp 0
         bufp <- liftIO $ mallocForeignPtrArray defaultChunkLength
         let iter = convStream (convFunc fmt offp bufp) iter_dub
-        joinIob . takeUpTo count $ iter
+        joinIob . takeUpTo count $ iter)
       )
     Nothing ->
       MIteratee . throwErr . iterStrExc $
