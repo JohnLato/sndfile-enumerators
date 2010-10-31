@@ -45,7 +45,7 @@ Library
    bytestring                >= 0.9.1 && < 0.10,
    extensible-exceptions     >= 0.1 && < 0.2,
    word24                    >= 0.1 && < 0.2,
-   mutable-iter              >= 0.1 && < 0.3,
+   mutable-iter              >= 0.1 && < 0.4,
    MonadCatchIO-transformers >= 0.2 && < 0.3
  exposed-modules:
    Sound.Iteratee
