@@ -209,7 +209,7 @@ readValue dict offset WAVEDATA count = do
   fmt_m <- dictReadLastFormat dict
   case fmt_m of
     Just fmt ->
-      fmt `seq` (return . Just . WENDUB $ \iter_dub -> do
+      fmt `seq` (return . Just $ WENDUB $ \iter_dub -> do
         MIteratee $ Itr.seek (8 + fromIntegral offset)
         offp <- liftIO $ newFp 0
         bufp <- liftIO $ mallocForeignPtrArray defaultChunkLength
@@ -222,13 +222,13 @@ readValue dict offset WAVEDATA count = do
 
 -- return the WaveFormat iteratee
 readValue _dict offset WAVEFMT count =
-  return . Just . WENBYTE $ \iter -> do
+  return . Just $ WENBYTE $ \iter -> do
     MIteratee $ Itr.seek (8 + fromIntegral offset)
     joinIob $ MI.takeUpTo count iter
 
 -- for WAVEOTHER, return Word8s and maybe the user can parse them
 readValue _dict offset (WAVEOTHER _str) count =
-  return . Just . WENBYTE $ \iter -> do
+  return . Just $ WENBYTE $ \iter -> do
     MIteratee $ Itr.seek (8 + fromIntegral offset)
     joinIob $ MI.takeUpTo count iter
 
