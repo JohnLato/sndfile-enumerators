@@ -31,21 +31,15 @@ Library
  ghc-options:
    -Wall
    -fexcess-precision
- if flag(splitBase)
-   build-depends:
-     base >= 3, base < 5
- else
-   build-depends:
-     base < 3
  build-depends:
+   base                      >= 3   && < 5,
    binary                    >= 0.5 && < 0.6,
    containers                >= 0.2 && < 0.5,
    transformers              >= 0.2 && < 0.3,
-   iteratee                  >= 0.4 && < 0.6,
+   iteratee                  >= 0.4 && < 0.7,
    bytestring                >= 0.9.1 && < 0.10,
-   extensible-exceptions     >= 0.1 && < 0.2,
    word24                    >= 0.1 && < 0.2,
-   mutable-iter              >= 0.1 && < 0.4,
+   mutable-iter              >= 0.1 && < 0.5,
    MonadCatchIO-transformers >= 0.2 && < 0.3
  exposed-modules:
    Sound.Iteratee
