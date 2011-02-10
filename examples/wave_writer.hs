@@ -1,6 +1,8 @@
 -- Copy data from one file to another
+-- compile with -funfolding-use-threshold=64
 
 {-# LANGUAGE BangPatterns #-}
+
 module Main where
 
 import Data.MutableIter
