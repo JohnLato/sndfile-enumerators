@@ -36,10 +36,10 @@ Library
    binary                    >= 0.5 && < 0.6,
    containers                >= 0.2 && < 0.5,
    transformers              >= 0.2 && < 0.3,
-   iteratee                  >= 0.4 && < 0.8,
+   iteratee                  >= 0.4 && < 0.9,
    bytestring                >= 0.9.1 && < 0.10,
    word24                    >= 0.1 && < 0.2,
-   mutable-iter              >= 0.1 && < 0.6,
+   mutable-iter              >= 0.1 && < 0.7,
    MonadCatchIO-transformers >= 0.2 && < 0.3
  exposed-modules:
    Sound.Iteratee
