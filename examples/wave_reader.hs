@@ -43,6 +43,8 @@ test (Just dict) = do
   liftIO . putStrLn $ show maxm
   return ()
 
+-- | As of now (ghc-7.1, mutable-iter-0.6, sndfile-enumerators-0.7)
+--  ,this version is as fast as max_iter
 max_iter2 :: MonadCatchIO m => MIteratee (IOBuffer r Double) m Double
 max_iter2 = foldl' (flip (max . abs)) 0
 
