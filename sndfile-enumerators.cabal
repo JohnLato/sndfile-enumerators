@@ -1,5 +1,5 @@
 Name:		sndfile-enumerators
-Version:        0.7.0
+Version:        0.8.0
 Cabal-Version:  >= 1.2
 Description:	encode and decode soundfiles using Iteratees.
                 Audio files may be read or written, with classes and 
