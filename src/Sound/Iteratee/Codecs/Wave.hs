@@ -126,27 +126,30 @@ waveReader ::
  (MonadCatchIO m, Functor m) =>
    MIteratee (IOB r Word8) m (Maybe WAVEDict)
 waveReader = do
-  readRiff
+  isRiff <- readRiff
+  when (not isRiff) $ MIteratee . throwErr . iterStrExc $ "Bad RIFF header: "
   tot_size <- endianRead4 LSB
-  readRiffWave
+  isWave <- readRiffWave
+  when (not isWave) $ MIteratee . throwErr . iterStrExc $ "Bad WAVE header: "
   chunks_m <- findChunks $ fromIntegral tot_size
   loadDict $ joinMaybe chunks_m
 
--- |Read the RIFF header of a file.
-readRiff :: MonadCatchIO m => MIteratee (IOB r Word8) m ()
+-- |Read the RIFF header of a file.  Returns True if the file is a valid RIFF.
+readRiff :: MonadCatchIO m => MIteratee (IOB r Word8) m Bool
 readRiff = do
   cnt <- heads $ fmap (fromIntegral . ord) "RIFF"
   case cnt of
-    4 -> return ()
-    _ -> MIteratee . throwErr . iterStrExc $ "Bad RIFF header: "
+    4 -> return True
+    _ -> return False
 
--- | Read the WAVE part of the RIFF header.
-readRiffWave :: MonadCatchIO m => MIteratee (IOB r Word8) m ()
+-- | Read the WAVE part of the RIFF header.  Returns True if the file is
+--   a valid WAVE, otherwise False.
+readRiffWave :: MonadCatchIO m => MIteratee (IOB r Word8) m Bool
 readRiffWave = do
   cnt <- heads $ fmap (fromIntegral . ord) "WAVE"
   case cnt of
-    4 -> return ()
-    _ -> MIteratee . throwErr . iterStrExc $ "Bad RIFF/WAVE header: "
+    4 -> return True
+    _ -> return False
 
 -- | An internal function to find all the chunks.  It assumes that the
 -- stream is positioned to read the first chunk.
