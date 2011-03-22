@@ -27,4 +27,4 @@ getAudioInfo fp = case getFormat fp of
   Just Wave -> fileDriverAudio (waveReader >>=
              maybe (return Nothing) dictReadFirstFormat) fp
   Just Raw  -> return Nothing
-  _         -> return Nothing
+  _         -> return Nothing -- could try everything and see what matches...

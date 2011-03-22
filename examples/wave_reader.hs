@@ -39,11 +39,11 @@ test Nothing = liftIO $ putStrLn "No dictionary"
 test (Just dict) = do
   fmtm <- dictReadFirstFormat dict
   liftIO . putStrLn $ show fmtm
-  maxm <- dictProcessData_ 0 dict max_iter
+  maxm <- dictProcessData_ 0 dict max_iter2
   liftIO . putStrLn $ show maxm
   return ()
 
--- | As of now (ghc-7.1, mutable-iter-0.6, sndfile-enumerators-0.7)
+-- | As of now (ghc-7.0.2, mutable-iter-0.6, sndfile-enumerators-0.7)
 --  ,this version is as fast as max_iter
 max_iter2 :: MonadCatchIO m => MIteratee (IOBuffer r Double) m Double
 max_iter2 = foldl' (flip (max . abs)) 0
