@@ -53,6 +53,7 @@ import qualified Data.IntMap as IM
 import Data.Word
 import Data.Char (ord)
 
+import Control.Monad
 import Control.Monad.CatchIO
 import Control.Monad.IO.Class
 
