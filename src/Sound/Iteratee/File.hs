@@ -1,6 +1,9 @@
+{-# LANGUAGE RankNTypes #-}
+
 module Sound.Iteratee.File (
   getFormat
  ,getAudioInfo
+ ,runAudioIteratee
 )
 
 where
@@ -8,6 +11,8 @@ where
 import           Sound.Iteratee.Base
 import           Sound.Iteratee.Codecs
 import           Sound.Iteratee.Writer
+import           Data.MutableIter (MIteratee)
+import qualified Data.MutableIter.IOBuffer as IB
 
 import           System.FilePath
 import           Data.Char
@@ -28,3 +33,13 @@ getAudioInfo fp = case getFormat fp of
              maybe (return Nothing) dictReadFirstFormat) fp
   Just Raw  -> return Nothing
   _         -> return Nothing -- could try everything and see what matches...
+
+runAudioIteratee ::
+  FilePath
+  -> (forall r. MIteratee (IB.IOBuffer r Double) AudioMonad a)
+  -> IO (Maybe a)
+runAudioIteratee fp iter = case getFormat fp of
+  Just Wave -> fileDriverAudio (waveReader >>= \(Just dict) ->
+                    dictProcessData_ 0 dict iter) fp
+  Just Raw  -> return Nothing
+  _         -> return Nothing
