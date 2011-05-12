@@ -11,8 +11,8 @@ where
 import           Sound.Iteratee.Base
 import           Sound.Iteratee.Codecs
 import           Sound.Iteratee.Writer
-import           Data.MutableIter (MIteratee)
-import qualified Data.MutableIter.IOBuffer as IB
+import           Data.Iteratee
+import qualified Data.Vector.Storable as V
 
 import           System.FilePath
 import           Data.Char
@@ -36,7 +36,7 @@ getAudioInfo fp = case getFormat fp of
 
 runAudioIteratee ::
   FilePath
-  -> (forall r. MIteratee (IB.IOBuffer r Double) AudioMonad a)
+  -> (Iteratee (V.Vector Double) AudioMonad a)
   -> IO (Maybe a)
 runAudioIteratee fp iter = case getFormat fp of
   Just Wave -> fileDriverAudio (waveReader >>= \(Just dict) ->

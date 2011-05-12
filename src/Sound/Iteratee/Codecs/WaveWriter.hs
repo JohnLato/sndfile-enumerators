@@ -17,9 +17,8 @@ module Sound.Iteratee.Codecs.WaveWriter (
 where
 
 import Sound.Iteratee.Base
-import Data.MutableIter
-import qualified Data.MutableIter.IOBuffer as IB
-import Data.MutableIter.IOBuffer (hPut, mapBuffer)
+import Data.Iteratee
+import qualified Data.Vector.Storable as V
 import qualified Data.Iteratee as I
 import Data.Int.Int24
 import qualified Data.ByteString.Lazy as LB
@@ -53,18 +52,19 @@ instance WritableAudio WaveCodec where
 writeWave ::
   FilePath
   -> AudioFormat
-  -> MIteratee (IOBuffer r Double) AudioMonad ()
+  -> Iteratee (V.Vector Double) AudioMonad ()
 writeWave fp af = do
   lift $ openWave fp
   lift $ writeFormat af
   lift writeDataHeader
-  loop
+  liftI step
   lift closeWave
   lift $ put NoState
   where
-    loop = liftI step
-    step (I.Chunk buf) = guardNull buf loop $ lift (writeDataChunk buf) >> loop
-    step stream        = idone () stream
+    step (I.Chunk buf)
+      | V.null buf = liftI step
+      | otherwise  = lift (writeDataChunk buf) >> liftI step
+    step stream    = idone () stream
 
 -- |Open a wave file for writing
 openWave :: FilePath -> AudioMonad ()
@@ -99,12 +99,12 @@ writeDataHeader = do
     _                                 -> error "Can't write: not a WAVE file"
 
 -- |Write a data chunk.
-writeDataChunk :: IOBuffer r Double -> AudioMonad ()
+writeDataChunk :: V.Vector Double -> AudioMonad ()
 writeDataChunk buf = do
   as <- get
   case as of
     WaveState (Just h) (Just af) i i' off -> do
-      len <- liftIO . liftM fromIntegral $ getLength af
+      let len = fromIntegral $ getLength af
       liftIO $ putVec af h buf
       put $ WaveState (Just h) (Just af) (i + len) (i' + len) off
     WaveState Nothing  _       _ _ _  -> error "Can't write: no file opened"
@@ -112,12 +112,13 @@ writeDataChunk buf = do
     _                                 -> error "Can't write: not a WAVE file"
   where
     putVec af h buf' = case bitDepth af of
-      8  -> convertVector i8  af buf' >>= hPut h
-      16 -> convertVector i16 af buf' >>= hPut h
-      24 -> convertVector i24 af buf' >>= hPut h
-      32 -> convertVector i32 af buf' >>= hPut h
+      8  -> hPut h $ convertVector i8  af buf'
+      16 -> hPut h $ convertVector i16 af buf'
+      24 -> hPut h $ convertVector i24 af buf'
+      32 -> hPut h $ convertVector i32 af buf'
       x  -> error $ "Cannot write wave file: unsupported bit depth " ++ show x
-    getLength af = liftM (fromIntegral (bitDepth af `div` 8) *) (IB.length buf)
+    hPut h v = V.unsafeWith v (\p -> hPutBuf h p (V.length v))
+    getLength af = fromIntegral (bitDepth af `div` 8) * V.length buf
 
 i8 :: Int8
 i8 = 0
@@ -177,13 +178,9 @@ convertVector ::
   (Integral a, Storable a, Bounded a) =>
   a
   -> AudioFormat
-  -> IOBuffer r Double
-  -> IO (IOBuffer r a)
-convertVector _ (AudioFormat _nc _sr bd) buf = do
-  offp <- newFp 0
-  l <- IB.length buf
-  obuf <- mallocForeignPtrBytes (l * sizeOf (0::Double))
-  mapBuffer (unNormalize bd) offp obuf buf
+  -> V.Vector Double
+  -> V.Vector a
+convertVector _ (AudioFormat _nc _sr bd) = V.map (unNormalize bd)
 
 -- 8 bits are handled separately because (at least in wave) they aren't 2's
 -- complement negatives.

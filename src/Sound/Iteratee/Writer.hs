@@ -14,7 +14,9 @@ where
 import Sound.Iteratee.Base
 import Sound.Iteratee.Codecs
 
-import Data.MutableIter
+import Data.Iteratee
+import qualified Data.Vector.Storable as V
+import Data.Word (Word8)
 
 import Foreign.Storable (Storable)
 
@@ -25,10 +27,10 @@ runAudioMonad am = do
     NoState     -> return a
     WaveState{} -> runWaveAM (put s >> return a)
 
-fileDriverAudio :: (Storable el) =>
-  (forall r.  MIteratee (IOBuffer r el) AudioMonad a)
+fileDriverAudio ::
+  Iteratee (V.Vector Word8) AudioMonad a
   -> FilePath
   -> IO a
-fileDriverAudio i fp = runAM (fileDriverRandom defaultChunkLength i fp)
+fileDriverAudio i fp = runAM (fileDriverRandom i fp)
   where
     runAM = runAudioMonad

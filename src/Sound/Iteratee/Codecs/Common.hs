@@ -9,9 +9,8 @@ module Sound.Iteratee.Codecs.Common (
 where
 
 import Sound.Iteratee.Base
-import qualified Data.Iteratee as I
-import Data.MutableIter as Iter
-import qualified Data.MutableIter.IOBuffer as IB
+import           Data.Iteratee as I
+import qualified Data.Vector.Storable as V
 import Foreign
 import Control.Monad (replicateM, liftM)
 import Control.Monad.CatchIO
@@ -19,25 +18,25 @@ import Control.Monad.IO.Class
 import Data.Char (chr)
 import Data.Int.Int24
 import Data.Word.Word24
+import Data.ListLike.Vector.Storable ()
 
 -- =====================================================
 -- useful type synonyms
-
-type IOB m el = IOBuffer m el
 
 -- determine host endian-ness
 be :: IO Bool
 be = fmap (==1) $ with (1 :: Word16) (\p -> peekByteOff p 1 :: IO Word8)
 
 -- convenience function to read a 4-byte ASCII string
-stringRead4 :: MonadCatchIO m => MIteratee (IOB r Word8) m String
-stringRead4 = (liftM . map) (chr . fromIntegral) $ replicateM 4 Iter.head
+stringRead4 :: MonadCatchIO m => Iteratee (V.Vector Word8) m String
+stringRead4 = (liftM . map) (chr . fromIntegral) $ replicateM 4 I.head
 
-unroll8 :: (MonadCatchIO m) => MIteratee (IOB r Word8) m (Maybe (IOB r Word8))
+unroll8 :: (MonadCatchIO m) => Iteratee (V.Vector Word8) m (Maybe (V.Vector Word8))
 unroll8 = liftI step
   where
-  step (I.Chunk buf) = guardNull buf (liftI step) $
-                         idone (Just buf) (I.Chunk IB.empty)
+  step (I.Chunk buf)
+    | V.null buf = liftI step
+    | otherwise  = idone (Just buf) (I.Chunk V.empty)
   step stream        = idone Nothing stream
 
 -- When unrolling to a Word8, use the specialized unroll8 function
@@ -45,37 +44,42 @@ unroll8 = liftI step
 {-# RULES "unroll8" forall n. unroller n = unroll8 #-}
 unroller :: (Storable a, MonadCatchIO m) =>
   Int
-  -> MIteratee (IOB r Word8) m (Maybe (IOB r a))
+  -> Iteratee (V.Vector Word8) m (Maybe (V.Vector a))
 unroller wSize = liftI step
   where
-  step (I.Chunk buf) = guardNull buf (liftI step) $ do
-    len <- liftIO $ IB.length buf
-    if len < wSize then liftIO (IB.copyBuffer buf) >>= liftI . step'
+  step (I.Chunk buf)
+   | V.null buf = liftI step
+   | otherwise = do
+    let len = V.length buf
+    if len < wSize
+      then liftI $ step' buf
       else if len `rem` wSize == 0
               then do
-                buf' <- liftIO $ convert_vec buf
-                idone (Just buf') (I.Chunk IB.empty)
+                let buf' = convert_vec buf
+                idone (Just buf') (I.Chunk V.empty)
               else let newLen = (len `div` wSize) * wSize
+                       h      = convert_vec $ V.take newLen buf
+                       t      = V.drop newLen buf
                    in do
-                      (h, t) <- liftIO $ IB.splitAt buf newLen
-                      h' <- liftIO $ convert_vec h
-                      idone (Just h') (I.Chunk t)
+                      idone (Just h) (I.Chunk t)
   step stream = idone Nothing stream
-  step' i (I.Chunk buf) = guardNull buf (liftI (step' i)) $ do
-    l <- liftIO $ IB.length buf
-    iLen <- liftIO $ IB.length i
-    newbuf <- liftIO $ IB.append i buf
+  step' i (I.Chunk buf)
+   | V.null buf = liftI (step' i)
+   | otherwise = do
+    let l    = V.length buf
+        iLen = V.length i
+        newbuf = i V.++ buf
     if l+iLen < wSize then liftI (step' newbuf)
        else do
-         newLen <- liftIO $ IB.length newbuf
-         let newLen' = (newLen `div` wSize) * wSize
-         (h,t) <- liftIO $ IB.splitAt newbuf newLen'
-         h' <- liftIO $ convert_vec h
-         idone (Just h') (I.Chunk t)
+         let newLen  = V.length newbuf
+             newLen' = (newLen `div` wSize) * wSize
+             h       = convert_vec $ V.take newLen' newbuf
+             t       = V.drop newLen' newbuf
+         idone (Just h) (I.Chunk t)
   step' _i stream  = idone Nothing stream
-  convert_vec vec  = IB.castBuffer vec >>= hostToLE
+  convert_vec = hostToLE
 
-hostToLE :: (Monad m, Storable a) => IOB r a -> m (IOB r a)
+hostToLE :: forall a. Storable a => V.Vector Word8 -> V.Vector a
 hostToLE vec = let be' = unsafePerformIO be in if be'
     then error "wrong endian-ness.  Ask the maintainer to implement hostToLE"
 {-
@@ -84,14 +88,10 @@ hostToLE vec = let be' = unsafePerformIO be in if be'
             in
             loop wSize fp len off
 -}
-    else return vec
-{-
-    where
-      loop _wSize _fp 0 _off = return vec
-      loop wSize fp len off  = do
-        FFP.withForeignPtr fp (swapBytes wSize . flip FP.plusPtr off)
-        loop wSize fp (len - 1) (off + 1)
--}
+    else let (ptr, offset,len) = V.unsafeToForeignPtr vec
+         in V.unsafeFromForeignPtr (castForeignPtr ptr)
+                                 offset
+                                 (len `quot` sizeOf (undefined :: a))
 
 {-
 swapBytes :: Int -> ForeignPtr a -> IO ()
@@ -131,26 +131,24 @@ w32 = 0
 -- |Convert Word8s to Doubles
 convFunc :: (MonadCatchIO m) =>
   AudioFormat
-  -> ForeignPtr Int
-  -> ForeignPtr Double
-  -> MIteratee (IOBuffer r Word8) m (IOBuffer r Double)
-convFunc (AudioFormat _nc _sr 8) offp bufp = do
+  -> Iteratee (V.Vector Word8) m (V.Vector Double)
+convFunc (AudioFormat _nc _sr 8) = do
   mbuf <- unroll8
-  liftIO $ maybe (error "error in convFunc") (IB.mapBuffer
-    (normalize 8 . (fromIntegral :: Word8 -> Int8)) offp bufp) mbuf
-convFunc (AudioFormat _nc _sr 16) offp bufp = do
+  return $ maybe (error "error in convFunc") (V.map
+    (normalize 8 . (fromIntegral :: Word8 -> Int8))) mbuf
+convFunc (AudioFormat _nc _sr 16) = do
   mbuf <- unroller (sizeOf w16)
-  liftIO $ maybe (error "error in convFunc") (IB.mapBuffer
-    (normalize 16 . (fromIntegral :: Word16 -> Int16)) offp bufp) mbuf
-convFunc (AudioFormat _nc _sr 24) offp bufp = do
+  return $ maybe (error "error in convFunc") (V.map
+    (normalize 16 . (fromIntegral :: Word16 -> Int16))) mbuf
+convFunc (AudioFormat _nc _sr 24) = do
   mbuf <- unroller (sizeOf w24)
-  liftIO $ maybe (error "error in convFunc") (IB.mapBuffer
-    (normalize 24 . (fromIntegral :: Word24 -> Int24)) offp bufp) mbuf
-convFunc (AudioFormat _nc _sr 32) offp bufp = do
+  return $ maybe (error "error in convFunc") (V.map
+    (normalize 24 . (fromIntegral :: Word24 -> Int24))) mbuf
+convFunc (AudioFormat _nc _sr 32) = do
   mbuf <- unroller (sizeOf w32)
-  liftIO $ maybe (error "error in convFunc") (IB.mapBuffer
-    (normalize 32 . (fromIntegral :: Word32 -> Int32)) offp bufp) mbuf
-convFunc _ _ _ = MIteratee $ I.throwErr (I.iterStrExc "Invalid wave bit depth")
+  return $ maybe (error "error in convFunc") (V.map
+    (normalize 32 . (fromIntegral :: Word32 -> Int32))) mbuf
+convFunc _ = I.throwErr (I.iterStrExc "Invalid wave bit depth")
 
 
 -- ---------------------

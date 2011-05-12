@@ -7,16 +7,11 @@ where
 
 import Sound.Iteratee.Base
 import Sound.Iteratee.Codecs.Common
-import Data.MutableIter
-import qualified Data.MutableIter.IOBuffer as IB
+import           Data.Iteratee as I
+import qualified Data.Vector.Storable as V
 
 import Data.Word
 import Control.Monad.CatchIO
-import Control.Monad.IO.Class
-
-import Foreign.ForeignPtr
-
-type IOB = IB.IOBuffer
 
 data RawCodec = RawCodec
 
@@ -29,10 +24,8 @@ instance WritableAudio RawCodec where
 readRaw ::
  (MonadCatchIO m, Functor m) =>
   AudioFormat
-  -> MIteratee (IOB r Double) m a
-  -> MIteratee (IOB r Word8) m a
+  -> Iteratee (V.Vector Double) m a
+  -> Iteratee (V.Vector Word8) m a
 readRaw fmt iter_dub = do
-  offp <- liftIO $ newFp 0
-  bufp <- liftIO $ mallocForeignPtrArray defaultChunkLength
-  joinIob . convStream (convFunc fmt offp bufp) $ iter_dub
+  joinI . convStream (convFunc fmt) $ iter_dub
 

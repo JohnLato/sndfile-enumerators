@@ -1,3 +1,5 @@
+{-# LANGUAGE ScopedTypeVariables, FlexibleInstances, MultiParamTypeClasses #-}
+
 module Sound.Iteratee.Base (
   -- * Types
   -- ** Internal types
@@ -22,8 +24,18 @@ where
 
 import Prelude as P
 
-import Control.Monad.Trans.State
-import System.IO
+import           Control.Monad.Trans.State
+import           Control.Monad.IO.Class
+import           System.IO
+import           Data.Nullable
+import           Data.NullPoint
+import           Data.Iteratee.Base.ReadableChunk
+import qualified Data.Vector.Storable as V
+import           Data.Word
+
+import           Foreign.Marshal.Utils
+import           Foreign.ForeignPtr
+import           Foreign.Storable
 
 -- |Information about the AudioStream
 data AudioStreamState =
@@ -62,3 +74,15 @@ data SupportedBitDepths = Any | Supported [BitDepth]
 
 defaultChunkLength :: Int
 defaultChunkLength = 8190
+
+instance V.Storable a => Nullable (V.Vector a) where
+  nullC = V.null
+
+instance V.Storable a => NullPoint (V.Vector a) where
+  empty = V.empty
+
+instance ReadableChunk (V.Vector Word8) Word8 where
+  readFromPtr src blen = liftIO $ do
+    fp <- mallocForeignPtrBytes blen
+    withForeignPtr fp $ \dest -> copyBytes dest src blen
+    return $ V.unsafeFromForeignPtr fp 0 blen
