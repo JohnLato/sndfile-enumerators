@@ -3,6 +3,7 @@ module Sound.Iteratee.Codecs.Wave (
   -- * Types
   -- ** Internal types
   WaveCodec (..),
+  WAVEDict,
   WAVEDE (..),
   WAVEDEENUM (..),
   -- ** WAVE CHUNK types
