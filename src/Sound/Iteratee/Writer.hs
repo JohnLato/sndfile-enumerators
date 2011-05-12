@@ -5,8 +5,9 @@
 
 module Sound.Iteratee.Writer (
   -- * Audio writing functions
-  fileDriverAudio,
-  runAudioMonad
+  fileDriverAudio
+  ,runAudioMonad
+  ,enumAudioFile
 )
 
 where
@@ -15,6 +16,7 @@ import Sound.Iteratee.Base
 import Sound.Iteratee.Codecs
 
 import Data.Iteratee
+import Data.Iteratee.IO
 import qualified Data.Vector.Storable as V
 import Data.Word (Word8)
 
@@ -27,6 +29,7 @@ runAudioMonad am = do
     NoState     -> return a
     WaveState{} -> runWaveAM (put s >> return a)
 
+-- | A simplified interface to running an audio iteratee
 fileDriverAudio ::
   Iteratee (V.Vector Word8) AudioMonad a
   -> FilePath
@@ -34,3 +37,6 @@ fileDriverAudio ::
 fileDriverAudio i fp = runAM (fileDriverRandom i fp)
   where
     runAM = runAudioMonad
+
+enumAudioFile :: Int -> FilePath -> Enumerator (V.Vector Word8) AudioMonad a
+enumAudioFile = enumFileRandom
