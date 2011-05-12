@@ -1,4 +1,7 @@
-{-# LANGUAGE ScopedTypeVariables, FlexibleInstances, MultiParamTypeClasses #-}
+{-# LANGUAGE ScopedTypeVariables
+            ,FlexibleInstances
+            ,MultiParamTypeClasses
+            ,DeriveDataTypeable #-}
 
 module Sound.Iteratee.Base (
   -- * Types
@@ -17,19 +20,26 @@ module Sound.Iteratee.Base (
   BitDepth,
   FrameCount,
   -- ** File Format Types
-  SupportedFileFormat (..)
+  SupportedFileFormat (..),
+  -- ** Exceptions
+  UnknownFileTypeException (..),
+  CorruptFileException (..),
+  MissingFormatException (..)
 )
 
 where
 
 import Prelude as P
 
+import           Control.Exception
 import           Control.Monad.Trans.State
 import           Control.Monad.IO.Class
 import           System.IO
 import           Data.Nullable
 import           Data.NullPoint
 import           Data.Iteratee.Base.ReadableChunk
+import           Data.Iteratee.Exception
+import           Data.Typeable
 import qualified Data.Vector.Storable as V
 import           Data.Word
 
@@ -86,3 +96,31 @@ instance ReadableChunk (V.Vector Word8) Word8 where
     fp <- mallocForeignPtrBytes blen
     withForeignPtr fp $ \dest -> copyBytes dest src blen
     return $ V.unsafeFromForeignPtr fp 0 blen
+
+-- | Audio Exceptions
+
+data UnknownFileTypeException =
+  UnknownFileTypeException deriving (Eq, Show, Typeable)
+
+instance Exception UnknownFileTypeException where
+  toException = iterExceptionToException
+  fromException = iterExceptionFromException
+
+instance IException UnknownFileTypeException where
+
+data CorruptFileException = CorruptFileException deriving (Eq, Show, Typeable)
+
+instance Exception CorruptFileException where
+  toException = iterExceptionToException
+  fromException = iterExceptionFromException
+
+instance IException CorruptFileException where
+
+data MissingFormatException =
+  MissingFormatException deriving (Eq, Show, Typeable)
+
+instance Exception MissingFormatException where
+  toException = iterExceptionToException
+  fromException = iterExceptionFromException
+
+instance IException MissingFormatException where
