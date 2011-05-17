@@ -24,7 +24,9 @@ module Sound.Iteratee.Base (
   -- ** Exceptions
   UnknownFileTypeException (..),
   CorruptFileException (..),
-  MissingFormatException (..)
+  MissingFormatException (..),
+  -- * Audio iteratees
+  getChannel
 )
 
 where
@@ -37,15 +39,16 @@ import           Control.Monad.IO.Class
 import           System.IO
 import           Data.Nullable
 import           Data.NullPoint
+import           Data.Iteratee as I
 import           Data.Iteratee.Base.ReadableChunk
-import           Data.Iteratee.Exception
+import           Data.Iteratee.Exception ()
+import           Data.ListLike.Vector.Storable ()
 import           Data.Typeable
 import qualified Data.Vector.Storable as V
 import           Data.Word
 
 import           Foreign.Marshal.Utils
 import           Foreign.ForeignPtr
-import           Foreign.Storable
 
 -- |Information about the AudioStream
 data AudioStreamState =
@@ -97,7 +100,24 @@ instance ReadableChunk (V.Vector Word8) Word8 where
     withForeignPtr fp $ \dest -> copyBytes dest src blen
     return $ V.unsafeFromForeignPtr fp 0 blen
 
--- | Audio Exceptions
+-- | Operate on a single channel of an audio stream.
+getChannel ::
+  Monad m
+  => Int
+  -> Int
+  -> Enumeratee (V.Vector Double) (V.Vector Double) m a
+getChannel 1        m   = \i -> I.drop m >> convStream getChunk i
+getChannel numChans chn = unfoldConvStream mkIter chn
+ where
+  mkIter drp = do
+    I.drop drp
+    buf <- getChunk
+    let tlen = V.length buf
+        (nlen,rest) = quotRem tlen numChans
+        newbuf = V.generate nlen (\i -> V.unsafeIndex buf (i*numChans))
+    return (rest, newbuf)
+
+-- Audio Exceptions
 
 data UnknownFileTypeException =
   UnknownFileTypeException deriving (Eq, Show, Typeable)
