@@ -20,8 +20,6 @@ import Data.Iteratee.IO
 import qualified Data.Vector.Storable as V
 import Data.Word (Word8)
 
-import Foreign.Storable (Storable)
-
 runAudioMonad :: AudioMonad a -> IO a
 runAudioMonad am = do
   (a, s) <- runStateT am NoState

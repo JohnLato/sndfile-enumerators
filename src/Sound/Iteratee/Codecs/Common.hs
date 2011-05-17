@@ -14,7 +14,6 @@ import qualified Data.Vector.Storable as V
 import Foreign
 import Control.Monad (replicateM, liftM)
 import Control.Monad.CatchIO
-import Control.Monad.IO.Class
 import Data.Char (chr)
 import Data.Int.Int24
 import Data.Word.Word24

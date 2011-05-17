@@ -53,9 +53,7 @@ import Data.Char (ord)
 
 import Control.Monad
 import Control.Monad.CatchIO
-import Control.Monad.IO.Class
-
-import Foreign.ForeignPtr
+import Control.Monad.IO.Class ()
 
 -- =====================================================
 -- WAVE libary code
@@ -79,9 +77,9 @@ type MEnumeratorM2 sfrom sto m a = Iteratee sto m a
                                    -> Iteratee sfrom m (Iteratee sto m a)
 
 data WAVEDEENUM =
-  WENBYTE  (forall a m r. (MonadCatchIO m, Functor m) =>
+  WENBYTE  (forall a m. (MonadCatchIO m, Functor m) =>
               MEnumeratorM (V.Vector Word8) (V.Vector Word8) m a)
-  | WENDUB (forall a m r. (MonadCatchIO m, Functor m) =>
+  | WENDUB (forall a m. (MonadCatchIO m, Functor m) =>
               MEnumeratorM2 (V.Vector Word8) (V.Vector Double) m a)
 
 -- |Standard WAVE Chunks

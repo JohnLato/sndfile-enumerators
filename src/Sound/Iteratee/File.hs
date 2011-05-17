@@ -13,7 +13,7 @@ where
 
 import           Sound.Iteratee.Base
 import           Sound.Iteratee.Codecs
-import           Sound.Iteratee.Codecs.Wave
+import           Sound.Iteratee.Codecs.Wave ()
 import           Sound.Iteratee.Writer
 import           Data.Iteratee
 import           Data.Iteratee.IO (defaultBufSize)
@@ -22,7 +22,6 @@ import qualified Data.Vector.Storable as V
 import           Control.Exception
 import           System.FilePath
 import           Data.Char
-import           Data.Word
 
 -- | get the format from a file name
 getFormat :: FilePath -> Maybe SupportedFileFormat

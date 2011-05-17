@@ -22,7 +22,7 @@ main = do
     [] -> putStrLn "Usage: wave_reader FileName"
     fname:xs -> do
       putStrLn $ "Reading file: " ++ fname
-      fileDriverRandom (waveReader >>= test) fname
+      fileDriverRandomVBuf (2^15) (waveReader >>= test) fname
       return ()
 
 -- Use the collection of [WAVEDE] returned from waveReader to
