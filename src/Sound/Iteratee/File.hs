@@ -4,6 +4,7 @@ module Sound.Iteratee.File (
   getFormat
  ,getAudioInfo
  ,runAudioIteratee
+ ,tryRunAudioIteratee
  ,enumAudioIteratee
  ,enumAudioIterateeWithFormat
  ,defaultBufSize
@@ -16,12 +17,16 @@ import           Sound.Iteratee.Codecs
 import           Sound.Iteratee.Codecs.Wave ()
 import           Sound.Iteratee.Writer
 import           Data.Iteratee
-import           Data.Iteratee.IO (defaultBufSize)
 import qualified Data.Vector.Storable as V
 
 import           Control.Exception
 import           System.FilePath
 import           Data.Char
+
+-- | Default buffer size.  The value from Data.Iteratee.IO is generally too
+-- small for good performance.
+defaultBufSize :: Int
+defaultBufSize = 2 ^ (15 :: Int)
 
 -- | get the format from a file name
 getFormat :: FilePath -> Maybe SupportedFileFormat
@@ -39,6 +44,7 @@ getAudioInfo fp = case getFormat fp of
              maybe (return Nothing) dictReadFirstFormat) fp
   Just Raw  -> return Nothing
   _         -> return Nothing -- could try everything and see what matches...
+{-# INLINE getAudioInfo #-}
 
 enumAudioIterateeWithFormat ::
   FilePath
@@ -54,15 +60,24 @@ enumAudioIterateeWithFormat fp fi = case getFormat fp of
                 mFmt <- dictReadFirstFormat d
                 maybe (throwErr $ toException MissingFormatException)
                       (dictProcessData 0 d . fi) mFmt )
+{-# INLINE enumAudioIterateeWithFormat #-}
 
 enumAudioIteratee ::
   FilePath
   -> Iteratee (V.Vector Double) AudioMonad a
   -> AudioMonad (Iteratee (V.Vector Double) AudioMonad a)
 enumAudioIteratee fp i = enumAudioIterateeWithFormat fp (const i)
+{-# INLINE enumAudioIteratee #-}
 
-runAudioIteratee :: Exception e
+runAudioIteratee ::
+  FilePath
+  -> Iteratee (V.Vector Double) AudioMonad a
+  -> IO a
+runAudioIteratee fp i = runAudioMonad $ enumAudioIteratee fp i >>= run
+{-# INLINE runAudioIteratee #-}
+
+tryRunAudioIteratee :: Exception e
   => FilePath
   -> Iteratee (V.Vector Double) AudioMonad a
   -> IO (Either e a)
-runAudioIteratee fp i = runAudioMonad $ enumAudioIteratee fp i >>= tryRun
+tryRunAudioIteratee fp i = runAudioMonad $ enumAudioIteratee fp i >>= tryRun
