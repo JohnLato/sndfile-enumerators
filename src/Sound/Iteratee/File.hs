@@ -20,6 +20,7 @@ import           Data.Iteratee
 import qualified Data.Vector.Storable as V
 
 import           Control.Exception
+import           Control.Monad.CatchIO
 import           System.FilePath
 import           Data.Char
 
@@ -47,9 +48,10 @@ getAudioInfo fp = case getFormat fp of
 {-# INLINE getAudioInfo #-}
 
 enumAudioIterateeWithFormat ::
-  FilePath
-  -> (AudioFormat -> Iteratee (V.Vector Double) AudioMonad a)
-  -> AudioMonad (Iteratee (V.Vector Double) AudioMonad a)
+  (MonadCatchIO m, Functor m)
+  => FilePath
+  -> (AudioFormat -> Iteratee (V.Vector Double) m a)
+  -> m (Iteratee (V.Vector Double) m a)
 enumAudioIterateeWithFormat fp fi = case getFormat fp of
   Just Wave -> run =<< enumAudioFile defaultBufSize fp (waveReader >>= wFn)
   Just Raw  -> return . throwErr $ iterStrExc "Raw format not yet implemented"
@@ -63,9 +65,10 @@ enumAudioIterateeWithFormat fp fi = case getFormat fp of
 {-# INLINE enumAudioIterateeWithFormat #-}
 
 enumAudioIteratee ::
-  FilePath
-  -> Iteratee (V.Vector Double) AudioMonad a
-  -> AudioMonad (Iteratee (V.Vector Double) AudioMonad a)
+  (MonadCatchIO m, Functor m)
+  => FilePath
+  -> Iteratee (V.Vector Double) m a
+  -> m (Iteratee (V.Vector Double) m a)
 enumAudioIteratee fp i = enumAudioIterateeWithFormat fp (const i)
 {-# INLINE enumAudioIteratee #-}
 

@@ -19,6 +19,7 @@ import Data.Iteratee
 import Data.Iteratee.IO
 import qualified Data.Vector.Storable as V
 import Data.Word (Word8)
+import Control.Monad.CatchIO
 
 runAudioMonad :: AudioMonad a -> IO a
 runAudioMonad am = do
@@ -36,5 +37,9 @@ fileDriverAudio i fp = runAM (fileDriverRandom i fp)
   where
     runAM = runAudioMonad
 
-enumAudioFile :: Int -> FilePath -> Enumerator (V.Vector Word8) AudioMonad a
+enumAudioFile ::
+  MonadCatchIO m
+  => Int
+  -> FilePath
+  -> Enumerator (V.Vector Word8) m a
 enumAudioFile = enumFileRandom
