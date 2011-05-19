@@ -103,8 +103,8 @@ instance ReadableChunk (V.Vector Word8) Word8 where
 -- | Operate on a single channel of an audio stream.
 getChannel ::
   Monad m
-  => Int
-  -> Int
+  => Int     -- ^ number of channels
+  -> Int     -- ^ channel index (1-based)
   -> Enumeratee (V.Vector Double) (V.Vector Double) m a
 getChannel 1        m   = \i -> I.drop m >> convStream getChunk i
 getChannel numChans chn = unfoldConvStream mkIter chn
