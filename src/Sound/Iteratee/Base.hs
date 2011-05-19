@@ -37,13 +37,13 @@ import           Control.Exception
 import           Control.Monad.Trans.State
 import           Control.Monad.IO.Class
 import           System.IO
+import           Data.Data
 import           Data.Nullable
 import           Data.NullPoint
 import           Data.Iteratee as I
 import           Data.Iteratee.Base.ReadableChunk
 import           Data.Iteratee.Exception ()
 import           Data.ListLike.Vector.Storable ()
-import           Data.Typeable
 import qualified Data.Vector.Storable as V
 import           Data.Word
 
@@ -59,7 +59,7 @@ data AudioStreamState =
 -- | An enumeration of all file types supported for reading and writing.
 data SupportedFileFormat = Raw
                            | Wave
-                           deriving (Show, Enum, Bounded, Eq)
+                           deriving (Show, Enum, Bounded, Eq, Data, Typeable)
 
 -- | Common functions for writing audio data
 class WritableAudio a where
@@ -76,7 +76,7 @@ data AudioFormat = AudioFormat {
   numberOfChannels :: NumChannels, -- ^Number of channels in the audio data
   sampleRate :: SampleRate, -- ^Sample rate of the audio data
   bitDepth :: BitDepth -- ^Bit depth of the audio data
-  } deriving (Show, Eq)
+  } deriving (Show, Eq, Data, Typeable)
 
 type NumChannels = Integer
 type SampleRate  = Integer
