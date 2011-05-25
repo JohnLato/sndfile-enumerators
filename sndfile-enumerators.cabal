@@ -42,7 +42,7 @@ Library
    listlike-instances        >= 0.1,
    MonadCatchIO-transformers >= 0.2   && < 0.3,
    transformers              >= 0.2   && < 0.3,
-   vector,
+   vector                    >= 0.6   && < 0.8,
    word24                    >= 0.1 && < 0.2
  exposed-modules:
    Sound.Iteratee
