@@ -111,12 +111,12 @@ writeDataChunk buf = do
     _                                 -> error "Can't write: not a WAVE file"
   where
     putVec af h buf' = case bitDepth af of
-      8  -> hPut h $ convertVector i8  af buf'
-      16 -> hPut h $ convertVector i16 af buf'
-      24 -> hPut h $ convertVector i24 af buf'
-      32 -> hPut h $ convertVector i32 af buf'
+      8  -> hPut h 1 $ convertVector i8  af buf'
+      16 -> hPut h 2 $ convertVector i16 af buf'
+      24 -> hPut h 3 $ convertVector i24 af buf'
+      32 -> hPut h 4 $ convertVector i32 af buf'
       x  -> error $ "Cannot write wave file: unsupported bit depth " ++ show x
-    hPut h v = V.unsafeWith v (\p -> hPutBuf h p (V.length v))
+    hPut h bytes v = V.unsafeWith v (\p -> hPutBuf h p (bytes * V.length v))
     getLength af = fromIntegral (bitDepth af `div` 8) * V.length buf
 
 i8 :: Int8
