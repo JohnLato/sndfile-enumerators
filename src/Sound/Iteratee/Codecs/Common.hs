@@ -8,16 +8,18 @@ module Sound.Iteratee.Codecs.Common (
   
 where
 
-import Sound.Iteratee.Base
+import           Sound.Iteratee.Base
 import           Data.Iteratee as I
 import qualified Data.Vector.Storable as V
-import Foreign
-import Control.Monad (replicateM, liftM)
-import Control.Monad.CatchIO
-import Data.Char (chr)
-import Data.Int.Int24
-import Data.Word.Word24
-import Data.ListLike.Vector.Storable ()
+import           Foreign
+import           Control.Applicative
+import           Control.Monad (replicateM, liftM)
+import           Control.Monad.CatchIO
+import           Data.Char (chr)
+import           Data.Int.Int24
+import           Data.Word.Word24
+import           Data.ListLike.Vector.Storable ()
+
 
 -- =====================================================
 -- useful type synonyms
@@ -30,20 +32,15 @@ be = fmap (==1) $ with (1 :: Word16) (\p -> peekByteOff p 1 :: IO Word8)
 stringRead4 :: MonadCatchIO m => Iteratee (V.Vector Word8) m String
 stringRead4 = (liftM . map) (chr . fromIntegral) $ replicateM 4 I.head
 
-unroll8 :: (MonadCatchIO m) => Iteratee (V.Vector Word8) m (Maybe (V.Vector Word8))
-unroll8 = liftI step
-  where
-  step (I.Chunk buf)
-    | V.null buf = liftI step
-    | otherwise  = idone (Just buf) (I.Chunk V.empty)
-  step stream        = idone Nothing stream
+unroll8 :: (MonadCatchIO m) => Iteratee (V.Vector Word8) m (V.Vector Word8)
+unroll8 = I.getChunk
 
 -- When unrolling to a Word8, use the specialized unroll8 function
 -- because we actually don't need to do anything
 {-# RULES "unroll8" forall n. unroller n = unroll8 #-}
-unroller :: (Storable a, MonadCatchIO m) =>
+unroller :: (Storable a, MonadCatchIO m, Functor m) =>
   Int
-  -> Iteratee (V.Vector Word8) m (Maybe (V.Vector a))
+  -> Iteratee (V.Vector Word8) m (V.Vector a)
 unroller wSize = liftI step
   where
   step (I.Chunk buf)
@@ -54,29 +51,23 @@ unroller wSize = liftI step
       then liftI $ step' buf
       else if len `rem` wSize == 0
               then do
-                let buf' = convert_vec buf
-                idone (Just buf') (I.Chunk V.empty)
+                let buf' = hostToLE buf
+                idone buf' (I.Chunk V.empty)
               else let newLen = (len `div` wSize) * wSize
-                       h      = convert_vec $ V.take newLen buf
+                       h      = hostToLE $ V.take newLen buf
                        t      = V.drop newLen buf
-                   in do
-                      idone (Just h) (I.Chunk t)
-  step stream = idone Nothing stream
+                   in idone h (I.Chunk t)
+  step stream = idone V.empty stream
   step' i (I.Chunk buf)
    | V.null buf = liftI (step' i)
    | otherwise = do
     let l    = V.length buf
         iLen = V.length i
         newbuf = i V.++ buf
-    if l+iLen < wSize then liftI (step' newbuf)
-       else do
-         let newLen  = V.length newbuf
-             newLen' = (newLen `div` wSize) * wSize
-             h       = convert_vec $ V.take newLen' newbuf
-             t       = V.drop newLen' newbuf
-         idone (Just h) (I.Chunk t)
-  step' _i stream  = idone Nothing stream
-  convert_vec = hostToLE
+    if l+iLen < wSize
+       then liftI (step' newbuf)
+       else step (I.Chunk newbuf)
+  step' _i stream  = idone V.empty stream
 
 hostToLE :: forall a. Storable a => V.Vector Word8 -> V.Vector a
 hostToLE vec = let be' = unsafePerformIO be in if be'
@@ -89,8 +80,8 @@ hostToLE vec = let be' = unsafePerformIO be in if be'
 -}
     else let (ptr, offset,len) = V.unsafeToForeignPtr vec
          in V.unsafeFromForeignPtr (castForeignPtr ptr)
-                                 offset
-                                 (len `quot` sizeOf (undefined :: a))
+                                   offset
+                                   (len `quot` sizeOf (undefined :: a))
 
 {-
 swapBytes :: Int -> ForeignPtr a -> IO ()
@@ -128,25 +119,20 @@ w32 :: Word32
 w32 = 0
 
 -- |Convert Word8s to Doubles
-convFunc :: (MonadCatchIO m) =>
+convFunc :: (MonadCatchIO m, Functor m) =>
   AudioFormat
   -> Iteratee (V.Vector Word8) m (V.Vector Double)
-convFunc (AudioFormat _nc _sr 8) = do
-  mbuf <- unroll8
-  return $ maybe (error "error in convFunc") (V.map
-    (normalize 8 . (fromIntegral :: Word8 -> Int8))) mbuf
-convFunc (AudioFormat _nc _sr 16) = do
-  mbuf <- unroller (sizeOf w16)
-  return $ maybe (error "error in convFunc") (V.map
-    (normalize 16 . (fromIntegral :: Word16 -> Int16))) mbuf
-convFunc (AudioFormat _nc _sr 24) = do
-  mbuf <- unroller (sizeOf w24)
-  return $ maybe (error "error in convFunc") (V.map
-    (normalize 24 . (fromIntegral :: Word24 -> Int24))) mbuf
-convFunc (AudioFormat _nc _sr 32) = do
-  mbuf <- unroller (sizeOf w32)
-  return $ maybe (error "error in convFunc") (V.map
-    (normalize 32 . (fromIntegral :: Word32 -> Int32))) mbuf
+convFunc (AudioFormat _nc _sr 8) =
+  V.map (normalize 8 . (fromIntegral :: Word8 -> Int8)) <$> unroll8
+convFunc (AudioFormat _nc _sr 16) =
+  V.map (normalize 16 . (fromIntegral :: Word16 -> Int16))
+    <$> unroller (sizeOf w16)
+convFunc (AudioFormat _nc _sr 24) =
+  V.map (normalize 24 . (fromIntegral :: Word24 -> Int24))
+    <$> unroller (sizeOf w24)
+convFunc (AudioFormat _nc _sr 32) =
+  V.map (normalize 32 . (fromIntegral :: Word32 -> Int32))
+    <$> unroller (sizeOf w32)
 convFunc _ = I.throwErr (I.iterStrExc "Invalid wave bit depth")
 
 
