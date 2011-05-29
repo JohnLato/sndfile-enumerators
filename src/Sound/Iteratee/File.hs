@@ -27,7 +27,7 @@ import           Data.Char
 -- | Default buffer size.  The value from Data.Iteratee.IO is generally too
 -- small for good performance.
 defaultBufSize :: Int
-defaultBufSize = 2 ^ (15 :: Int)
+defaultBufSize = 2 ^ (16 :: Int)
 
 -- | get the format from a file name
 getFormat :: FilePath -> Maybe SupportedFileFormat
