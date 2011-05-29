@@ -43,7 +43,7 @@ Library
    MonadCatchIO-transformers >= 0.2   && < 0.3,
    transformers              >= 0.2   && < 0.3,
    vector                    >= 0.6   && < 0.8,
-   word24                    >= 0.1 && < 0.2
+   word24                    >= 0.1   && < 2.0
  exposed-modules:
    Sound.Iteratee
    Sound.Iteratee.Base
