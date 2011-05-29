@@ -9,7 +9,7 @@ License:	BSD3
 License-file:	LICENSE
 Author:		John W. Lato, jwlato@gmail.com
 Maintainer:	John W. Lato, jwlato@gmail.com
-homepage:       http://jwlato.webfactional.com/haskell/sndfile-enumerators
+homepage:       http://www.tiresiaspress.us/haskell/sndfile-enumerators
 Stability:	experimental
 synopsis:       Audio file reading/writing
 category:       Codec, Sound
