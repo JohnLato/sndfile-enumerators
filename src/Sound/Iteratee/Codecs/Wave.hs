@@ -255,7 +255,7 @@ dictReadFirstFormat dict = case IM.lookup (fromEnum WAVEFMT) dict of
   Just (WAVEDE _ WAVEFMT (WENBYTE enum) : _xs) -> enum sWaveFormat
   _ -> return Nothing
 
--- |Read the last fromat chunk from the WAVE dictionary.  This is useful
+-- |Read the last format chunk from the WAVE dictionary.  This is useful
 -- when parsing all chunks in the dictionary.
 dictReadLastFormat ::
  (MonadCatchIO m, Functor m) =>

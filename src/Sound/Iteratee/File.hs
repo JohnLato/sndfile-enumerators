@@ -38,11 +38,12 @@ getFormat fp = case ext of
  where
   ext = map toLower . tail $ takeExtension fp -- drop the initial "."
 
--- | get audio format information from a file
-getAudioInfo :: FilePath -> IO (Maybe AudioFormat)
+-- | get audio format information and audio length (samples, not frames)
+-- from a file
+getAudioInfo :: FilePath -> IO (Maybe (AudioFormat, Integer))
 getAudioInfo fp = case getFormat fp of
   Just Wave -> fileDriverAudio (waveReader >>=
-             maybe (return Nothing) dictReadFirstFormat) fp
+             maybe (return Nothing) dictSoundInfo) fp
   Just Raw  -> return Nothing
   _         -> return Nothing -- could try everything and see what matches...
 {-# INLINE getAudioInfo #-}
