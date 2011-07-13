@@ -51,6 +51,7 @@ Library
    Sound.Iteratee.Codecs.Wave
    Sound.Iteratee.Codecs.Raw
    Sound.Iteratee.File
+   Sound.Iteratee.Utils
    Sound.Iteratee.Writer
  other-modules:
    Sound.Iteratee.Codecs.WaveWriter
