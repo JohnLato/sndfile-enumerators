@@ -24,17 +24,3 @@ instance Arbitrary Word24 where
 
 instance CoArbitrary Word24 where
   coarbitrary = coarbitraryIntegral
-
-instance Arbitrary Int16 where
-  arbitrary = arbitraryBoundedIntegral
-  shrink = shrinkIntegral
-
-instance CoArbitrary Int16 where
-  coarbitrary = coarbitraryIntegral
-
-instance Arbitrary Word16 where
-  arbitrary = arbitraryBoundedIntegral
-  shrink = shrinkIntegral
-
-instance CoArbitrary Word16 where
-  coarbitrary = coarbitraryIntegral
