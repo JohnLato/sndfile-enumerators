@@ -12,7 +12,7 @@ import qualified Data.Vector.Storable as V
 import Data.Word (Word8)
 import Foreign.Storable (Storable)
 import Control.Monad.Trans
-import System
+import System.Environment
 
 import System.IO
 import Control.Monad.CatchIO as CIO

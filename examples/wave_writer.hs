@@ -12,7 +12,7 @@ import           Sound.Iteratee
 import qualified Data.IntMap as IM
 import           Data.Word (Word8)
 import           Control.Monad.Trans
-import           System
+import           System.Environment
 
 main :: IO ()
 main = do

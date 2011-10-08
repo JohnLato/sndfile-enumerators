@@ -9,7 +9,7 @@ import           Sound.Iteratee
 import qualified Data.Vector.Storable as V
 import           Data.Iteratee as I
 import           Control.Monad.CatchIO
-import           System
+import           System.Environment
 
 main :: IO ()
 main = do
