@@ -11,12 +11,19 @@ where
 import           Sound.Iteratee.Base
 import           Data.Iteratee as I
 import qualified Data.Vector.Storable as V
-import           Foreign
+import           Foreign.ForeignPtr
+import           Foreign.Marshal.Utils (with)
+import           Foreign.Ptr
+import           Foreign.Storable
+import           System.IO.Unsafe (unsafePerformIO)
 import           Control.Applicative
 import           Control.Monad (replicateM, liftM)
 import           Control.Monad.CatchIO
+import           Data.Bits
 import           Data.Char (chr)
+import           Data.Int
 import           Data.Int.Int24
+import           Data.Word
 import           Data.Word.Word24
 import           Data.ListLike.Vector.Storable ()
 
