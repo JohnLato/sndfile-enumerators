@@ -1,6 +1,6 @@
 -- Copy data from two separate files to another.
 
-{-# LANGUAGE BangPatterns, RankNTypes #-}
+{-# LANGUAGE BangPatterns, RankNTypes, FlexibleContexts #-}
 module Main where
 
 import Sound.Iteratee.Codecs.Wave
@@ -15,16 +15,18 @@ import Control.Monad.Trans
 import System.Environment
 
 import System.IO
-import Control.Monad.CatchIO as CIO
+import Control.Monad.IO.Class
 import Control.Monad
+import Control.Monad.Trans.Control
+import Control.Exception.Lifted
 
-file2Driver :: (MonadCatchIO m, Functor m) =>
+file2Driver :: (MonadIO m, MonadBaseControl IO m, Functor m) =>
   (forall r. Maybe (IM.IntMap [WAVEDE])
     -> Iteratee (V.Vector Word8) m (Iteratee (V.Vector Double) m a))
   -> FilePath
   -> FilePath
   -> m a
-file2Driver i f1 f2 = CIO.bracket
+file2Driver i f1 f2 = bracket
   (liftIO $ (openBinaryFile f1 ReadMode >>= \h1 -> openBinaryFile f2 ReadMode >>= \h2 -> return (h1,h2)))
   (liftIO . (\(h1, h2) -> hClose h1 >> hClose h2))
   (\(h1,h2) -> (I.run) =<< (I.run) =<<
@@ -42,7 +44,7 @@ main = do
     _ -> putStrLn "Usage: wave_writer ReadFile1 ReadFile2 WriteFile"
 
 
-embedProc :: (MonadCatchIO m, Functor m) => Maybe (IM.IntMap [WAVEDE]) -> Iteratee (V.Vector Double) m a -> Iteratee (V.Vector Word8) m (Iteratee (V.Vector Double) m a)
+embedProc :: (MonadIO m, MonadBaseControl IO m, Functor m) => Maybe (IM.IntMap [WAVEDE]) -> Iteratee (V.Vector Double) m a -> Iteratee (V.Vector Word8) m (Iteratee (V.Vector Double) m a)
 embedProc Nothing i = error "No dictionary"
 embedProc (Just dict) i = dictProcessData 0 dict i
 

@@ -40,7 +40,7 @@ Library
    iteratee                  >= 0.8.4 && < 0.9,
    filepath                  >= 1.0   && < 2.0,
    listlike-instances        >= 0.1,
-   MonadCatchIO-transformers >= 0.2   && < 0.3,
+   monad-control             >= 0.3   && < 0.4,
    transformers              >= 0.2   && < 0.3,
    vector                    >= 0.6   && < 0.10,
    word24                    >= 1     && < 2.0

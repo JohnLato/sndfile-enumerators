@@ -1,3 +1,5 @@
+{-# LANGUAGE FlexibleContexts #-}
+
 module Sound.Iteratee.Codecs.Raw (
   RawCodec (..)
   ,readRaw
@@ -10,8 +12,9 @@ import Sound.Iteratee.Codecs.Common
 import           Data.Iteratee as I
 import qualified Data.Vector.Storable as V
 
-import Data.Word
-import Control.Monad.CatchIO
+import           Data.Word
+import           Control.Monad.Trans.Control
+import           Control.Monad.IO.Class
 
 data RawCodec = RawCodec
 
@@ -22,7 +25,7 @@ instance WritableAudio RawCodec where
   fileType           RawCodec   = Raw
 
 readRaw ::
- (MonadCatchIO m, Functor m) =>
+ (MonadIO m, MonadBaseControl IO m, Functor m) =>
   AudioFormat
   -> Iteratee (V.Vector Double) m a
   -> Iteratee (V.Vector Word8) m a

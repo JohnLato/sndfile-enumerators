@@ -1,4 +1,4 @@
-{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE RankNTypes, FlexibleContexts #-}
 
 module Sound.Iteratee.File (
   getFormat
@@ -20,7 +20,8 @@ import           Data.Iteratee
 import qualified Data.Vector.Storable as V
 
 import           Control.Exception
-import           Control.Monad.CatchIO
+import           Control.Monad.IO.Class
+import           Control.Monad.Trans.Control
 import           System.FilePath
 import           Data.Char
 
@@ -49,7 +50,7 @@ getAudioInfo fp = case getFormat fp of
 {-# INLINE getAudioInfo #-}
 
 enumAudioIterateeWithFormat ::
-  (MonadCatchIO m, Functor m)
+  (MonadIO m, MonadBaseControl IO m, Functor m)
   => FilePath
   -> (AudioFormat -> Iteratee (V.Vector Double) m a)
   -> m (Iteratee (V.Vector Double) m a)
@@ -66,7 +67,7 @@ enumAudioIterateeWithFormat fp fi = case getFormat fp of
 {-# INLINE enumAudioIterateeWithFormat #-}
 
 enumAudioIteratee ::
-  (MonadCatchIO m, Functor m)
+  (MonadIO m, MonadBaseControl IO m, Functor m)
   => FilePath
   -> Iteratee (V.Vector Double) m a
   -> m (Iteratee (V.Vector Double) m a)

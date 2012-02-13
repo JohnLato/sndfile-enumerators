@@ -18,7 +18,6 @@ import           Foreign.Storable
 import           System.IO.Unsafe (unsafePerformIO)
 import           Control.Applicative
 import           Control.Monad (replicateM, liftM)
-import           Control.Monad.CatchIO
 import           Data.Bits
 import           Data.Char (chr)
 import           Data.Int
@@ -36,19 +35,19 @@ be :: IO Bool
 be = fmap (==1) $ with (1 :: Word16) (\p -> peekByteOff p 1 :: IO Word8)
 
 -- convenience function to read a 4-byte ASCII string
-stringRead4 :: MonadCatchIO m => Iteratee (V.Vector Word8) m String
+stringRead4 :: Monad m => Iteratee (V.Vector Word8) m String
 stringRead4 = (liftM . map) (chr . fromIntegral) $ replicateM 4 I.head
 
-unroll8 :: (MonadCatchIO m) => Iteratee (V.Vector Word8) m (V.Vector Word8)
+unroll8 :: (Monad m) => Iteratee (V.Vector Word8) m (V.Vector Word8)
 unroll8 = I.getChunk
 
 -- When unrolling to a Word8, use the specialized unroll8 function
 -- because we actually don't need to do anything
 {-# RULES "unroll8" forall n. unroller n = unroll8 #-}
-unroller :: (Storable a, MonadCatchIO m, Functor m) =>
+unroller :: (Storable a, Monad m, Functor m) =>
   Int
   -> Iteratee (V.Vector Word8) m (V.Vector a)
-unroller wSize = liftI step
+unroller wSize = icont step
   where
   step (I.Chunk buf)
    | V.null buf = liftI step
@@ -126,7 +125,7 @@ w32 :: Word32
 w32 = 0
 
 -- |Convert Word8s to Doubles
-convFunc :: (MonadCatchIO m, Functor m) =>
+convFunc :: (Monad m, Functor m) =>
   AudioFormat
   -> Iteratee (V.Vector Word8) m (V.Vector Double)
 convFunc (AudioFormat _nc _sr 8) =
