@@ -50,30 +50,30 @@ unroller :: (Storable a, Monad m, Functor m) =>
 unroller wSize = icont step
   where
   step (I.Chunk buf)
-   | V.null buf = liftI step
+   | V.null buf = return (icont step, I.Chunk buf)
    | otherwise = do
     let len = V.length buf
     if len < wSize
-      then liftI $ step' buf
+      then return (icont $ step' buf, I.Chunk V.empty)
       else if len `rem` wSize == 0
               then do
                 let buf' = hostToLE buf
-                idone buf' (I.Chunk V.empty)
+                return (idone buf', I.Chunk V.empty)
               else let newLen = (len `div` wSize) * wSize
                        h      = hostToLE $ V.take newLen buf
                        t      = V.drop newLen buf
-                   in idone h (I.Chunk t)
-  step stream = idone V.empty stream
+                   in return (idone h, I.Chunk t)
+  step stream = return (idone V.empty, stream)
   step' i (I.Chunk buf)
-   | V.null buf = liftI (step' i)
+   | V.null buf = return (icont (step' i), I.Chunk buf)
    | otherwise = do
     let l    = V.length buf
         iLen = V.length i
         newbuf = i V.++ buf
     if l+iLen < wSize
-       then liftI (step' newbuf)
+       then return (icont (step' newbuf), I.Chunk V.empty)
        else step (I.Chunk newbuf)
-  step' _i stream  = idone V.empty stream
+  step' _i stream  = return (idone V.empty, stream)
 
 hostToLE :: forall a. Storable a => V.Vector Word8 -> V.Vector a
 hostToLE vec = let be' = unsafePerformIO be in if be'

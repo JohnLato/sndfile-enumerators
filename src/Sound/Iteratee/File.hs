@@ -16,7 +16,7 @@ import           Sound.Iteratee.Base
 import           Sound.Iteratee.Codecs
 import           Sound.Iteratee.Codecs.Wave ()
 import           Sound.Iteratee.Writer
-import           Data.Iteratee
+import           Data.Iteratee hiding (defaultBufSize)
 import qualified Data.Vector.Storable as V
 
 import           Control.Exception

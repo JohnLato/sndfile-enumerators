@@ -56,14 +56,14 @@ writeWave fp af = do
   lift $ openWave fp
   lift $ writeFormat af
   lift writeDataHeader
-  liftI step
+  icont step
   lift closeWave
   lift $ put NoState
   where
     step (I.Chunk buf)
-      | V.null buf = liftI step
-      | otherwise  = lift (writeDataChunk buf) >> liftI step
-    step stream    = idone () stream
+      | V.null buf = return (icont step, I.Chunk buf)
+      | otherwise  = writeDataChunk buf >> return (icont step, I.Chunk V.empty)
+    step stream    = return (idone (), stream)
 
 -- |Open a wave file for writing
 openWave :: FilePath -> AudioMonad ()

@@ -37,7 +37,7 @@ Library
    binary                    >= 0.5   && < 0.6,
    bytestring                >= 0.9.1 && < 0.10,
    containers                >= 0.2   && < 0.5,
-   iteratee                  >= 0.8.4 && < 0.9,
+   iteratee                  == 0.9.*,
    filepath                  >= 1.0   && < 2.0,
    listlike-instances        >= 0.1,
    monad-control             >= 0.3   && < 0.4,

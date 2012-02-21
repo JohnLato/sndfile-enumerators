@@ -48,8 +48,8 @@ import qualified Data.Vector.Storable as V
 import           Data.Iteratee as I
 
 import qualified Data.IntMap as IM
-import Data.Word
-import Data.Char (ord)
+import           Data.Word
+import           Data.Char (ord)
 
 import           Control.Monad
 import           Control.Monad.Trans.Control
