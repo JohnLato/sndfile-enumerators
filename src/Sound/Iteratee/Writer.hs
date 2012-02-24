@@ -28,6 +28,7 @@ runAudioMonad am = do
   case s of
     NoState     -> return a
     WaveState{} -> runWaveAM (put s >> return a)
+{-# INLINE runAudioMonad #-}
 
 -- | A simplified interface to running an audio iteratee
 fileDriverAudio ::
@@ -37,6 +38,7 @@ fileDriverAudio ::
 fileDriverAudio i fp = runAM (fileDriverRandom i fp)
   where
     runAM = runAudioMonad
+{-# INLINE fileDriverAudio #-}
 
 enumAudioFile ::
   (MonadIO m, MonadBaseControl IO m)
@@ -44,3 +46,4 @@ enumAudioFile ::
   -> FilePath
   -> Enumerator (V.Vector Word8) m a
 enumAudioFile = enumFileRandom
+{-# INLINE enumAudioFile #-}

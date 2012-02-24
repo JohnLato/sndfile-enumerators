@@ -64,6 +64,7 @@ writeWave fp af = do
       | V.null buf = return (icont step, I.Chunk buf)
       | otherwise  = writeDataChunk buf >> return (icont step, I.Chunk V.empty)
     step stream    = return (idone (), stream)
+{-# INLINE writeWave #-}
 
 -- |Open a wave file for writing
 openWave :: FilePath -> AudioMonad ()
@@ -72,6 +73,7 @@ openWave file = do
   liftIO $ LB.hPut h . P.runPut $ writeTopHeaderRaw
   let (WaveState h' f i i' off) = initState WaveCodec h
   put $ WaveState h' f (i + 4) i' (off + 12)
+{-# INLINE openWave #-}
   
 -- |Write a data format block to the open wave file
 writeFormat :: AudioFormat -> AudioMonad ()
@@ -84,6 +86,7 @@ writeFormat af = do
     WaveState Nothing  _      _ _ _  -> error "Can't write: no file opened"
     WaveState _      (Just _) _ _ _  -> error "Format already written"
     _                                -> error "Can't write: not a WAVE file"
+{-# INLINE writeFormat #-}
 
 -- |Write the header for a Data chunk.
 writeDataHeader :: AudioMonad ()
@@ -96,6 +99,7 @@ writeDataHeader = do
     WaveState Nothing  _       _ _ _  -> error "Can't write: no file opened"
     WaveState _        Nothing _ _ _  -> error "No format specified"
     _                                 -> error "Can't write: not a WAVE file"
+{-# INLINE writeDataHeader #-}
 
 -- |Write a data chunk.
 writeDataChunk :: V.Vector Double -> AudioMonad ()
@@ -118,6 +122,7 @@ writeDataChunk buf = do
       x  -> error $ "Cannot write wave file: unsupported bit depth " ++ show x
     hPut h bytes v = V.unsafeWith v (\p -> hPutBuf h p (bytes * V.length v))
     getLength af = fromIntegral (bitDepth af `div` 8) * V.length buf
+{-# INLINE writeDataChunk #-}
 
 i8 :: Int8
 i8 = 0
@@ -140,10 +145,12 @@ closeWave = do
       liftIO $ hClose h
     WaveState Nothing  _  _ _  _ -> error "Can't close file: no handle"
     x -> error $ "Can't close file: isn't a WAVE file: " ++ show x
+{-# INLINE closeWave #-}
 
 runWaveAM :: AudioMonad a -> IO a
 runWaveAM m = evalStateT (m >>= (\a -> closeWave >> return a))
                          (emptyState WaveCodec)
+{-# INLINE runWaveAM #-}
  
 writeTopHeaderRaw :: P.Put
 writeTopHeaderRaw = do
@@ -180,6 +187,7 @@ convertVector ::
   -> V.Vector Double
   -> V.Vector a
 convertVector _ (AudioFormat _nc _sr bd) = V.map (unNormalize bd)
+{-# INLINE convertVector #-}
 
 -- 8 bits are handled separately because (at least in wave) they aren't 2's
 -- complement negatives.
@@ -193,6 +201,7 @@ unNormalize _bd a = let
   if a >= 0
     then fromIntegral . roundDoublePos . (* posMult) . clip $ a
     else fromIntegral . roundDoubleNeg . (* negMult) . clip $ a
+{-# INLINE unNormalize #-}
 
 clip :: Double -> Double
 clip = max (-1) . min 1
