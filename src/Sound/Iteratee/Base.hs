@@ -39,7 +39,6 @@ import           Control.Monad.IO.Class
 import           System.IO
 import           Data.Data
 import           Data.Nullable
-import           Data.NullPoint
 import           Data.Iteratee as I
 import           Data.Iteratee.Base.ReadableChunk
 import           Data.Iteratee.Exception ()
@@ -91,14 +90,12 @@ defaultChunkLength = 8190
 instance V.Storable a => Nullable (V.Vector a) where
   nullC = V.null
 
-instance V.Storable a => NullPoint (V.Vector a) where
-  empty = V.empty
-
 instance ReadableChunk (V.Vector Word8) Word8 where
   readFromPtr src blen = liftIO $ do
     fp <- mallocForeignPtrBytes blen
     withForeignPtr fp $ \dest -> copyBytes dest src blen
     return $ V.unsafeFromForeignPtr fp 0 blen
+  empty = V.empty
 
 -- | Operate on a single channel of an audio stream.
 getChannel ::
