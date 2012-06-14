@@ -49,31 +49,33 @@ unroller :: (Storable a, Monad m, Functor m) =>
   -> Iteratee (V.Vector Word8) m (V.Vector a)
 unroller wSize = icont step
   where
+  step NoData = return (emptyK step)
   step (I.Chunk buf)
-   | V.null buf = return (icont step, I.Chunk buf)
+   | V.null buf = return (emptyK step)
    | otherwise = do
     let len = V.length buf
     if len < wSize
-      then return (icont $ step' buf, I.Chunk V.empty)
+      then return (emptyK $ step' buf)
       else if len `rem` wSize == 0
               then do
                 let buf' = hostToLE buf
-                return (idone buf', I.Chunk V.empty)
+                return (idoneT buf' NoData)
               else let newLen = (len `div` wSize) * wSize
                        h      = hostToLE $ V.take newLen buf
                        t      = V.drop newLen buf
-                   in return (idone h, I.Chunk t)
-  step stream = return (idone V.empty, stream)
+                   in return (idoneT h $ I.Chunk t)
+  step stream@(EOF{}) = return (idoneT V.empty stream)
+  step' i NoData = return (emptyK (step' i))
   step' i (I.Chunk buf)
-   | V.null buf = return (icont (step' i), I.Chunk buf)
+   | V.null buf = return (emptyK (step' i))
    | otherwise = do
     let l    = V.length buf
         iLen = V.length i
         newbuf = i V.++ buf
     if l+iLen < wSize
-       then return (icont (step' newbuf), I.Chunk V.empty)
+       then return (emptyK (step' newbuf))
        else step (I.Chunk newbuf)
-  step' _i stream  = return (idone V.empty, stream)
+  step' _i stream@(EOF{}) = return (idoneT V.empty stream)
 
 hostToLE :: forall a. Storable a => V.Vector Word8 -> V.Vector a
 hostToLE vec = let be' = unsafePerformIO be in if be'

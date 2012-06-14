@@ -60,10 +60,10 @@ writeWave fp af = do
   lift closeWave
   lift $ put NoState
   where
-    step (I.Chunk buf)
-      | V.null buf = return (icont step, I.Chunk buf)
-      | otherwise  = writeDataChunk buf >> return (icont step, I.Chunk V.empty)
-    step stream    = return (idone (), stream)
+    step (I.Chunk buf) =
+       writeDataChunk buf >> return (emptyK step)
+    step NoData = return (emptyK step)
+    step stream@(EOF{}) = return (idoneT () stream)
 {-# INLINE writeWave #-}
 
 -- |Open a wave file for writing
