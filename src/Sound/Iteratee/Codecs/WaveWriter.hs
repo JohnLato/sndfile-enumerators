@@ -61,9 +61,9 @@ writeWave fp af = do
   lift $ put NoState
   where
     step (I.Chunk buf) =
-       writeDataChunk buf >> return (emptyK step)
-    step NoData = return (emptyK step)
-    step stream@(EOF{}) = return (idoneT () stream)
+       writeDataChunk buf >> continue step
+    step NoData = continue step
+    step stream@(EOF{}) = contDoneM () stream
 {-# INLINE writeWave #-}
 
 -- |Open a wave file for writing

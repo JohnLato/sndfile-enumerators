@@ -38,7 +38,6 @@ import           Control.Monad.Trans.State
 import           Control.Monad.IO.Class
 import           System.IO
 import           Data.Data
-import           Data.Nullable
 import           Data.Iteratee as I
 import           Data.Iteratee.Base.ReadableChunk
 import           Data.Iteratee.Exception ()
@@ -86,9 +85,6 @@ data SupportedBitDepths = Any | Supported [BitDepth]
 
 defaultChunkLength :: Int
 defaultChunkLength = 8190
-
-instance V.Storable a => Nullable (V.Vector a) where
-  nullC = V.null
 
 instance ReadableChunk (V.Vector Word8) Word8 where
   readFromPtr src blen = liftIO $ do

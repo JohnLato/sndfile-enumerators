@@ -59,10 +59,10 @@ enumAudioIterateeWithFormat fp fi = case getFormat fp of
   Just Raw  -> return . throwErr $ iterStrExc "Raw format not yet implemented"
   _         -> return . throwErr $ iterStrExc "Raw format not yet implemented"
  where
-  wFn = maybe (throwErr $ toException CorruptFileException)
+  wFn = maybe (throwErr CorruptFileException)
               (\d -> do
                 mFmt <- dictReadFirstFormat d
-                maybe (throwErr $ toException MissingFormatException)
+                maybe (throwErr MissingFormatException)
                       (dictProcessData 0 d . fi) mFmt )
 {-# INLINE enumAudioIterateeWithFormat #-}
 
@@ -81,8 +81,8 @@ runAudioIteratee ::
 runAudioIteratee fp i = runAudioMonad $ enumAudioIteratee fp i >>= run
 {-# INLINE runAudioIteratee #-}
 
-tryRunAudioIteratee :: Exception e
-  => FilePath
+tryRunAudioIteratee ::
+  FilePath
   -> Iteratee (V.Vector Double) AudioMonad a
-  -> IO (Either e a)
+  -> IO (Either IFException a)
 tryRunAudioIteratee fp i = runAudioMonad $ enumAudioIteratee fp i >>= tryRun
