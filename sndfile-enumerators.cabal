@@ -34,15 +34,15 @@ Library
    -O2
  build-depends:
    base                      >= 3     && < 5,
-   binary                    >= 0.5   && < 0.6,
-   bytestring                >= 0.9.1 && < 0.10,
+   binary                    >= 0.5   && < 0.7,
+   bytestring                >= 0.9.1 && < 0.11,
    containers                >= 0.2   && < 0.6,
    iteratee                  == 0.9.*,
    filepath                  >= 1.0   && < 2.0,
    listlike-instances        >= 0.1,
    monad-control             >= 0.3   && < 0.4,
    transformers              >= 0.2   && < 0.4,
-   vector                    >= 0.6   && < 0.10,
+   vector                    >= 0.6   && < 0.11,
    word24                    >= 1     && < 2.0
  exposed-modules:
    Sound.Iteratee
