@@ -1,4 +1,7 @@
-{-# LANGUAGE RankNTypes, NoMonomorphismRestriction, FlexibleContexts #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE NoMonomorphismRestriction #-}
+{-# LANGUAGE FlexibleContexts #-}
+
 module Sound.Iteratee.Codecs.Wave (
   -- * Types
   -- ** Internal types
