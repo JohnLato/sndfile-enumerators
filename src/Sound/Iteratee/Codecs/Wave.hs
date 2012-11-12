@@ -49,7 +49,7 @@ import           Data.Iteratee as I
 
 import qualified Data.IntMap as IM
 import           Data.Word
-import           Data.Char (ord)
+import           Data.Char (chr, ord)
 
 import           Control.Monad
 import           Control.Monad.Trans.Control
@@ -100,12 +100,14 @@ instance Enum WAVECHUNK where
 -- wave chunk reading/writing functions
 
 -- |Convert a string to WAVECHUNK type
-waveChunk :: String -> Maybe WAVECHUNK
-waveChunk str
-  | str == "fmt " = Just WAVEFMT
-  | str == "data" = Just WAVEDATA
-  | P.length str == 4 = Just $ WAVEOTHER str
+waveChunk :: V.Vector Word8 -> Maybe WAVECHUNK
+waveChunk vec
+  | vec == V.fromList [102,109,116,32] = Just WAVEFMT   -- "fmt "
+  | vec == V.fromList [100,97,116,97]  = Just WAVEDATA  -- "data"
+  | V.length vec == 4 = Just . WAVEOTHER $ map (chr . fromIntegral) vlist
   | otherwise = Nothing
+  where
+    vlist = V.toList vec
 
 -- |Convert a WAVECHUNK to the representative string
 chunkToString :: WAVECHUNK -> String
@@ -159,7 +161,7 @@ findChunks n = findChunks' 12 []
       then I.drop 1 >> findChunks'2 offset acc
       else findChunks'2 offset acc
   findChunks'2 offset acc = do
-    typ <- stringRead4
+    typ <- I.joinI $ I.take 4 stream2stream
     count <- endianRead4 LSB
     case waveChunk typ of
       Nothing -> (throwErr . iterStrExc $

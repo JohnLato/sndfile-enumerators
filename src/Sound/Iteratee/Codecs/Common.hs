@@ -1,8 +1,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Sound.Iteratee.Codecs.Common (
-  stringRead4
- ,joinMaybe
+  joinMaybe
  ,convFunc
 )
   
@@ -33,10 +32,6 @@ import           Data.ListLike.Vector.Storable ()
 -- determine host endian-ness
 be :: IO Bool
 be = fmap (==1) $ with (1 :: Word16) (\p -> peekByteOff p 1 :: IO Word8)
-
--- convenience function to read a 4-byte ASCII string
-stringRead4 :: Monad m => Iteratee (V.Vector Word8) m String
-stringRead4 = (liftM . map) (chr . fromIntegral) $ replicateM 4 I.head
 
 unroll8 :: (Monad m) => Iteratee (V.Vector Word8) m (V.Vector Word8)
 unroll8 = I.getChunk
