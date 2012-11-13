@@ -102,11 +102,6 @@ instance Enum WAVECHUNK where
   toEnum 3 = WAVEOTHER ""
   toEnum _ = error "Invalid enumeration value"
 
-data ReaderData m a = ReaderData
-  { currentFormat :: Maybe AudioFormat
-  , currentIter :: Iteratee (V.Vector Double) m a
-  }
-
 -- -----------------
 -- wave chunk reading/writing functions
 
@@ -145,37 +140,45 @@ waveReader = do
 -- direct pass instead of constructing a dictionary.
 directWaveReader
   :: (MonadIO m, MonadBaseControl IO m, Functor m)
-  => (AudioFormat -> Iteratee (V.Vector Double) m a)
-  -> Iteratee (V.Vector Word8) m (Iteratee (V.Vector Double) m a)
-directWaveReader proc = do
+  => Iteratee (V.Vector Word8) m
+       (AudioFormat, Enumeratee (V.Vector Word8) (V.Vector Double) m a)
+directWaveReader = do
   isRiff <- readRiff
   when (not isRiff) $ throwErr . iterStrExc $ "Bad RIFF header: "
   tot_size <- endianRead4 LSB
   isWave <- readRiffWave
   when (not isWave) $ throwErr . iterStrExc $ "Bad WAVE header: "
-  loop (ReaderData Nothing (throwErr . iterStrExc $ "No format chunk found"))
+  loop1
  where
-  loop (rdr@ReaderData{..}) = do
+  loop1 = do
     typ <- I.joinI $ I.take 4 stream2stream
     case waveChunk typ of
-      Nothing -> return currentIter
+      Nothing -> throwErr $ iterStrExc "No format or data chunks found"
       Just WAVEFMT -> do
-          I.drop 4  -- the chunk count, should probably check that it's correct count <- endianRead4 LSB
+          I.drop 4
           audioFormat <- maybeIter sWaveFormat "Invalid format: not enough bytes"
-          let currentIter = proc audioFormat
-              currentFormat = Just audioFormat
-          loop rdr{ currentFormat, currentIter }
-      Just WAVEDATA
-        | Just fmt <- currentFormat -> do
-              count <- endianRead4 LSB
-              nextIter <- I.takeUpTo (fromIntegral count) ><> convStream (convFunc fmt) $ currentIter
-              if I.isIterFinished nextIter then return nextIter else loop rdr{currentIter = nextIter}
-        | otherwise -> throwErr $ iterStrExc "No format found before DATA chunk"
+          return (audioFormat, loop audioFormat)
+      Just WAVEDATA -> throwErr $ iterStrExc "No format found before DATA chunk"
       Just (WAVEOTHER _) -> do
           count <- endianRead4 LSB
           I.drop $ fromIntegral count
-          loop rdr
-
+          loop1
+  loop audioFormat iter = do
+    typ <- I.joinI $ I.take 4 stream2stream
+    case waveChunk typ of
+      Nothing -> return iter
+      Just WAVEFMT -> do
+          I.drop 4
+          audioFormat' <- maybeIter sWaveFormat "Invalid format: not enough bytes"
+          loop audioFormat' iter
+      Just WAVEDATA -> do
+          count <- endianRead4 LSB
+          nextIter <- I.takeUpTo (fromIntegral count) ><> convStream (convFunc audioFormat) $ iter
+          if I.isIterFinished nextIter then return nextIter else loop audioFormat nextIter
+      Just (WAVEOTHER _) -> do
+          count <- endianRead4 LSB
+          I.drop $ fromIntegral count
+          loop audioFormat iter
 
 -- |Read the RIFF header of a file.  Returns True if the file is a valid RIFF.
 readRiff :: (Monad m) => Iteratee (V.Vector Word8) m Bool
