@@ -55,15 +55,10 @@ enumAudioIterateeWithFormat ::
   -> (AudioFormat -> Iteratee (V.Vector Double) m a)
   -> m (Iteratee (V.Vector Double) m a)
 enumAudioIterateeWithFormat fp fi = case getFormat fp of
-  Just Wave -> run =<< enumAudioFile defaultBufSize fp (waveReader >>= wFn)
+  Just Wave -> run =<< enumAudioFile defaultBufSize fp (directWaveReader fi)
   Just Raw  -> return . throwErr $ iterStrExc "Raw format not yet implemented"
   _         -> return . throwErr $ iterStrExc "Raw format not yet implemented"
  where
-  wFn = maybe (throwErr CorruptFileException)
-              (\d -> do
-                mFmt <- dictReadFirstFormat d
-                maybe (throwErr MissingFormatException)
-                      (dictProcessData 0 d . fi) mFmt )
 {-# INLINE enumAudioIterateeWithFormat #-}
 
 enumAudioIteratee ::
