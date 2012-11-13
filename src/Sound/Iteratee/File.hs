@@ -19,6 +19,7 @@ import           Sound.Iteratee.Writer
 import           Data.Iteratee hiding (defaultBufSize)
 import qualified Data.Vector.Storable as V
 
+import           Control.Applicative
 import           Control.Exception
 import           Control.Monad.IO.Class
 import           Control.Monad.Trans.Control
@@ -43,8 +44,7 @@ getFormat fp = case ext of
 -- from a file
 getAudioInfo :: FilePath -> IO (Maybe (AudioFormat, Integer))
 getAudioInfo fp = case getFormat fp of
-  Just Wave -> fileDriverAudio (waveReader >>=
-             maybe (return Nothing) dictSoundInfo) fp
+  Just Wave -> fileDriverAudio (simpleDictSoundInfo <$> waveReadDict) fp
   Just Raw  -> return Nothing
   _         -> return Nothing -- could try everything and see what matches...
 {-# INLINE getAudioInfo #-}

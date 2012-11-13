@@ -1,35 +1,30 @@
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
 
+{-# OPTIONS_GHC -Wall #-}
 module Sound.Iteratee.Codecs.Wave (
   -- * Types
   -- ** Internal types
   WaveCodec (..),
-  WAVEDict,
-  WAVEDE (..),
-  WAVEDEENUM (..),
+  WaveDict,
+  WaveChunk (..),
   -- ** WAVE CHUNK types
-  WAVECHUNK (..),
+  WaveChunkType (..),
   chunkToString,
   -- * Wave reading Iteratees
   -- ** Basic wave reading
-  waveReader,
+  waveReadDict,
   directWaveReader,
   readRiff,
   waveChunk,
-  -- ** WAVE Dictionary reading/processing functions
-  dictReadFormat,
-  dictReadFirstFormat,
-  dictReadLastFormat,
-  dictProcessData,
-  dictProcessData_,
   -- ** Information on WAVE chunks
-  dictGetLengthBytes,
-  dictGetLengthSamples,
   dictSoundInfo,
+  simpleDictSoundInfo,
+  dictFormats,
   -- * Wave writing files
   -- ** Writing iteratees
   writeWave,
@@ -53,10 +48,12 @@ import qualified Data.Vector.Storable as V
 
 import           Data.Iteratee as I
 
-import qualified Data.IntMap as IM
+import qualified Data.List   as L
+import           Data.Maybe
 import           Data.Word
 import           Data.Char (chr, ord)
 
+import           Control.Arrow (first)
 import           Control.Monad
 import           Control.Monad.Trans.Control
 import           Control.Monad.IO.Class
@@ -64,77 +61,88 @@ import           Control.Monad.IO.Class
 -- =====================================================
 -- WAVE libary code
 
--- |A WAVE directory is a list associating WAVE chunks with
--- a record WAVEDE
-type WAVEDict = IM.IntMap [WAVEDE]
+-- |A wave directory is a list of 'WaveChunk's
+type WaveDict = [WaveChunk]
 
-data WAVEDE = WAVEDE{
-  wavedeCount :: Int, -- ^length of chunk
-  wavedeType :: WAVECHUNK, -- ^type of chunk
-  wavedeEnum :: WAVEDEENUM -- ^enumerator to get values of chunk
-  }
-
-instance Show WAVEDE where
-  show a = "Type: " ++ show (wavedeType a) ++ " :: Length: " ++
-            show (wavedeCount a)
-
-type MEnumeratorM sfrom sto m a = Iteratee sto m a -> Iteratee sfrom m a
-type MEnumeratorM2 sfrom sto m a = Iteratee sto m a
-                                   -> Iteratee sfrom m (Iteratee sto m a)
-
-data WAVEDEENUM =
-  WENBYTE  (forall a m. (MonadIO m, MonadBaseControl IO m, Functor m) =>
-              MEnumeratorM (V.Vector Word8) (V.Vector Word8) m a)
-  | WENDUB (forall a m. (MonadIO m, MonadBaseControl IO m, Functor m) =>
-              MEnumeratorM2 (V.Vector Word8) (V.Vector Double) m a)
+data WaveChunk =
+    WaveDataChunk
+      { waveCount    :: !Int  -- ^length of chunk
+      , waveOffset   :: !Int  -- ^ offset to data start
+      }
+  | WaveFmtChunk
+      { waveCount    :: !Int  -- ^length of chunk
+      , waveOffset   :: !Int  -- ^ offset to data start
+      , waveFormat   :: !AudioFormat
+      }
+  | WaveOtherChunk
+      { waveCount    :: !Int  -- ^length of chunk
+      , waveOffset   :: !Int  -- ^ offset to data start
+      , waveOtherType :: String
+      }
+  deriving (Eq, Show)
 
 -- |Standard WAVE Chunks
-data WAVECHUNK = WAVEFMT -- ^Format
-  | WAVEDATA              -- ^Data
-  | WAVEOTHER String      -- ^Other
+data WaveChunkType =
+    WaveFmt            -- ^Format
+  | WaveData           -- ^Data
+  | WaveOther String   -- ^Other
   deriving (Eq, Ord, Show)
-instance Enum WAVECHUNK where
-  fromEnum WAVEFMT = 1
-  fromEnum WAVEDATA = 2
-  fromEnum (WAVEOTHER _) = 3
-  toEnum 1 = WAVEFMT
-  toEnum 2 = WAVEDATA
-  toEnum 3 = WAVEOTHER ""
+
+instance Enum WaveChunkType where
+  fromEnum WaveFmt = 1
+  fromEnum WaveData = 2
+  fromEnum (WaveOther _) = 3
+  toEnum 1 = WaveFmt
+  toEnum 2 = WaveData
+  toEnum 3 = WaveOther ""
   toEnum _ = error "Invalid enumeration value"
 
 -- -----------------
 -- wave chunk reading/writing functions
 
--- |Convert a string to WAVECHUNK type
-waveChunk :: V.Vector Word8 -> Maybe WAVECHUNK
+-- |Convert a string to WaveChunkType type
+waveChunk :: V.Vector Word8 -> Maybe WaveChunkType
 waveChunk vec
-  | vec == V.fromList [102,109,116,32] = Just WAVEFMT   -- "fmt "
-  | vec == V.fromList [100,97,116,97]  = Just WAVEDATA  -- "data"
-  | V.length vec == 4 = Just . WAVEOTHER $ map (chr . fromIntegral) vlist
+  | vec == V.fromList [102,109,116,32] = Just WaveFmt   -- "fmt "
+  | vec == V.fromList [100,97,116,97]  = Just WaveData  -- "data"
+  | V.length vec == 4 = Just . WaveOther $ map (chr . fromIntegral) vlist
   | otherwise = Nothing
   where
     vlist = V.toList vec
 
--- |Convert a WAVECHUNK to the representative string
-chunkToString :: WAVECHUNK -> String
-chunkToString WAVEFMT = "fmt "
-chunkToString WAVEDATA = "data"
-chunkToString (WAVEOTHER str) = str
+-- |Convert a WaveChunkType to the representative string
+chunkToString :: WaveChunkType -> String
+chunkToString WaveFmt = "fmt "
+chunkToString WaveData = "data"
+chunkToString (WaveOther str) = str
 
 -- -----------------
 
 -- |The library function to read the WAVE dictionary
-waveReader ::
- (MonadIO m, MonadBaseControl IO m, Functor m) =>
-   Iteratee (V.Vector Word8) m (Maybe WAVEDict)
-waveReader = do
+waveReadDict
+  :: (MonadIO m, MonadBaseControl IO m, Functor m)
+  => Iteratee (V.Vector Word8) m WaveDict
+waveReadDict = do
   isRiff <- readRiff
   when (not isRiff) $ throwErr . iterStrExc $ "Bad RIFF header: "
   tot_size <- endianRead4 LSB
   isWave <- readRiffWave
   when (not isWave) $ throwErr . iterStrExc $ "Bad WAVE header: "
-  chunks_m <- findChunks $ fromIntegral tot_size
-  loadDict $ joinMaybe chunks_m
+  chunks <- findChunks $ fromIntegral tot_size
+  let mkChunk (waveOffset,waveCount,Left WaveData)    = WaveDataChunk{..}
+      mkChunk (waveOffset,waveCount,Right waveFormat) = WaveFmtChunk{..}
+      mkChunk (waveOffset,waveCount,Left (WaveOther waveOtherType)) =
+        WaveOtherChunk{..}
+  return $ foldr (\tup -> (mkChunk tup:)) [] chunks
+
+-- | Create a list of (AudioFormat,DataChunk) pairs from a WaveDict
+tagDict :: WaveDict -> [(AudioFormat, WaveChunk)]
+tagDict = finish . P.foldl f (Nothing, id)
+  where
+    finish = ($ []) . snd
+    f (_,acc) (WaveFmtChunk{..}) = (Just waveFormat, acc)
+    f (fm@(Just fmt),acc) (chk@WaveDataChunk{..}) = (fm,acc . ((fmt,chk):))
+    f acc _ = acc
 
 -- | An alternative way of reading a Wave file, reading over the file in one
 -- direct pass instead of constructing a dictionary.
@@ -145,7 +153,7 @@ directWaveReader
 directWaveReader = do
   isRiff <- readRiff
   when (not isRiff) $ throwErr . iterStrExc $ "Bad RIFF header: "
-  tot_size <- endianRead4 LSB
+  I.drop 4  -- total size
   isWave <- readRiffWave
   when (not isWave) $ throwErr . iterStrExc $ "Bad WAVE header: "
   loop1
@@ -154,12 +162,12 @@ directWaveReader = do
     typ <- I.joinI $ I.take 4 stream2stream
     case waveChunk typ of
       Nothing -> throwErr $ iterStrExc "No format or data chunks found"
-      Just WAVEFMT -> do
+      Just WaveFmt -> do
           I.drop 4
           audioFormat <- maybeIter sWaveFormat "Invalid format: not enough bytes"
           return (audioFormat, loop audioFormat)
-      Just WAVEDATA -> throwErr $ iterStrExc "No format found before DATA chunk"
-      Just (WAVEOTHER _) -> do
+      Just WaveData -> throwErr $ iterStrExc "No format found before DATA chunk"
+      Just (WaveOther _) -> do
           count <- endianRead4 LSB
           I.drop $ fromIntegral count
           loop1
@@ -167,15 +175,15 @@ directWaveReader = do
     typ <- I.joinI $ I.take 4 stream2stream
     case waveChunk typ of
       Nothing -> return iter
-      Just WAVEFMT -> do
+      Just WaveFmt -> do
           I.drop 4
           audioFormat' <- maybeIter sWaveFormat "Invalid format: not enough bytes"
           loop audioFormat' iter
-      Just WAVEDATA -> do
+      Just WaveData -> do
           count <- endianRead4 LSB
           nextIter <- I.takeUpTo (fromIntegral count) ><> convStream (convFunc audioFormat) $ iter
           if I.isIterFinished nextIter then return nextIter else loop audioFormat nextIter
-      Just (WAVEOTHER _) -> do
+      Just (WaveOther _) -> do
           count <- endianRead4 LSB
           I.drop $ fromIntegral count
           loop audioFormat iter
@@ -197,87 +205,38 @@ readRiffWave = do
     4 -> return True
     _ -> return False
 
+type ReadChunk = (Int, Int, Either WaveChunkType AudioFormat)
+
 -- | An internal function to find all the chunks.  It assumes that the
--- stream is positioned to read the first chunk.
-findChunks ::
- (MonadIO m, MonadBaseControl IO m) =>
-  Int
-  -> Iteratee (V.Vector Word8) m (Maybe [(Int, WAVECHUNK, Int)])
+-- stream is positioned to read the first chunk, 12 bytes into the stream.
+findChunks
+  :: (MonadIO m, MonadBaseControl IO m)
+  => Int
+  -> Iteratee (V.Vector Word8) m ([ReadChunk])
 findChunks n = findChunks' 12 []
   where
-  findChunks' offset acc = do
-    mpad <- I.peek
-    if (offset `rem` 2 == 1) && (mpad == Just 0)
-      then I.drop 1 >> findChunks'2 offset acc
-      else findChunks'2 offset acc
+  findChunks' offset acc
+    | offset >= fromIntegral n = return $ reverse acc
+    | otherwise = do
+        mpad <- I.peek
+        if (offset `rem` 2 == 1) && (mpad == Just 0)
+          then I.drop 1 >> findChunks'2 offset acc
+          else findChunks'2 offset acc
   findChunks'2 offset acc = do
     typ <- I.joinI $ I.take 4 stream2stream
     count <- endianRead4 LSB
     case waveChunk typ of
       Nothing -> (throwErr . iterStrExc $
         "Bad subchunk descriptor: " ++ show typ)
-      Just chk -> let newpos = offset + 8 + count in
-        if newpos >= fromIntegral n
-          then return . Just . reverse $
-               (fromIntegral offset, chk, fromIntegral count) : acc
-          else do
-            I.seek $ fromIntegral newpos
-            findChunks' newpos $
-             (fromIntegral offset, chk, fromIntegral count) : acc
-
-loadDict ::
- (MonadIO m, MonadBaseControl IO m, Functor m) =>
-  [(Int, WAVECHUNK, Int)]
-  -> Iteratee (V.Vector Word8) m (Maybe WAVEDict)
-loadDict = P.foldl read_entry (return (Just IM.empty))
-  where
-  read_entry dictM (offset, typ, count) = dictM >>=
-    maybe (return Nothing) (\dict -> do
-      enum_m <- readValue dict offset typ count
-      case (enum_m, IM.lookup (fromEnum typ) dict) of
-        (Just enum, Nothing) -> --last entry
-          return . Just $ IM.insert (fromEnum typ)
-                                    [WAVEDE (fromIntegral count) typ enum] dict
-        (Just enum, Just _vals) -> --more entries to come
-          return . Just $ IM.update
-            (\ls -> Just $ ls ++ [WAVEDE (fromIntegral count) typ enum])
-            (fromEnum typ) dict
-        (Nothing, _) -> return (Just dict)
-    )
-
-readValue ::
- (MonadIO m, MonadBaseControl IO m, Functor m) =>
-  WAVEDict
-  -> Int -- ^ Offset
-  -> WAVECHUNK -- ^ Chunk type
-  -> Int -- ^ Count
-  -> Iteratee (V.Vector Word8) m (Maybe WAVEDEENUM)
-readValue _dict offset _ 0 = throwErr . iterStrExc $
-  "Zero count in the entry of chunk at: " ++ show offset
-
-readValue dict offset WAVEDATA count = do
-  fmt_m <- dictReadLastFormat dict
-  case fmt_m of
-    Just fmt ->
-      fmt `seq` (return . Just $ WENDUB (\iter_dub -> do
-        I.seek (8 + fromIntegral offset)
-        let iter = convStream (convFunc fmt) iter_dub
-        joinI . takeUpTo count $ iter)
-      )
-    Nothing -> throwErr . iterStrExc $
-      "No valid format for data chunk at: " ++ show offset
-
--- return the WaveFormat iteratee
-readValue _dict offset WAVEFMT count =
-  return . Just $ WENBYTE $ \iter -> do
-    I.seek (8 + fromIntegral offset)
-    joinI $ I.takeUpTo count iter
-
--- for WAVEOTHER, return Word8s and maybe the user can parse them
-readValue _dict offset (WAVEOTHER _str) count =
-  return . Just $ WENBYTE $ \iter -> do
-    I.seek (8 + fromIntegral offset)
-    joinI $ I.takeUpTo count iter
+      Just WaveFmt -> do
+        audioFormat <- maybeIter sWaveFormat "invalid FMT chunk"
+        findChunks' (offset + 8 + count) $
+          (fromIntegral offset, fromIntegral count, Right audioFormat) : acc
+      Just chk -> do
+        let newpos = offset + 8 + count
+        I.seek $ fromIntegral newpos
+        findChunks' newpos $
+          (fromIntegral offset, fromIntegral count, Left chk) : acc
 
 -- |An Iteratee to read a wave format chunk
 sWaveFormat :: (MonadIO m, MonadBaseControl IO m) =>
@@ -298,94 +257,24 @@ maybeIter :: Monad m => Iteratee s m (Maybe a) -> String -> Iteratee s m a
 maybeIter i err = i >>= maybe (throwErr $ iterStrExc err) return
 
 -- ---------------------
--- functions to assist with reading from the dictionary
-
--- |Read the first format chunk in the WAVE dictionary.
-dictReadFirstFormat ::
- (MonadIO m, MonadBaseControl IO m, Functor m) =>
-  WAVEDict
-  -> Iteratee (V.Vector Word8) m (Maybe AudioFormat)
-dictReadFirstFormat dict = case IM.lookup (fromEnum WAVEFMT) dict of
-  Just [] -> return Nothing
-  Just (WAVEDE _ WAVEFMT (WENBYTE enum) : _xs) -> enum sWaveFormat
-  _ -> return Nothing
-
--- |Read the last format chunk from the WAVE dictionary.  This is useful
--- when parsing all chunks in the dictionary.
-dictReadLastFormat ::
- (MonadIO m, MonadBaseControl IO m, Functor m) =>
-  WAVEDict
-  -> Iteratee (V.Vector Word8) m (Maybe AudioFormat)
-dictReadLastFormat dict = case IM.lookup (fromEnum WAVEFMT) dict of
-  Just [] -> return Nothing
-  Just xs -> let (WAVEDE _ WAVEFMT (WENBYTE enum)) = P.last xs
-             in enum sWaveFormat
-  _ -> return Nothing
-
--- |Read the specified format chunk from the WAVE dictionary
-dictReadFormat ::
- (MonadIO m, MonadBaseControl IO m, Functor m) =>
-  Int -- ^ Index in the format chunk list to read
-  -> WAVEDict -- ^ Dictionary
-  -> Iteratee (V.Vector Word8) m (Maybe AudioFormat)
-dictReadFormat ix dict = case IM.lookup (fromEnum WAVEFMT) dict of
-  Just xs -> let (WAVEDE _ WAVEFMT (WENBYTE enum)) = xs !! ix
-             in enum sWaveFormat
-  _ -> return Nothing
-
--- |Read the specified data chunk from the dictionary, applying the
--- data to the specified Iteratee.
-dictProcessData ::
- (MonadIO m, MonadBaseControl IO m, Functor m) =>
-  Int -- ^ Index in the data chunk list to read
-  -> WAVEDict -- ^ Dictionary
-  -> Iteratee (V.Vector Double) m a
-  -> Iteratee (V.Vector Word8) m (Iteratee (V.Vector Double) m a)
-dictProcessData ix dict iter = case IM.lookup (fromEnum WAVEDATA) dict of
-  Just xs -> let (WAVEDE _ WAVEDATA (WENDUB enum)) = (!!) xs ix
-             in (enum iter)
-  _ -> error "didn't find requested enumerator in WAVEDict for dictProcessData"
-
-dictProcessData_ ::
- (MonadIO m, MonadBaseControl IO m, Functor m) =>
-  Int -- ^ Index in the data chunk list to read
-  -> WAVEDict -- ^ Dictionary
-  -> Iteratee (V.Vector Double) m a
-  -> Iteratee (V.Vector Word8) m (Maybe a)
-dictProcessData_ ix dict iter = case IM.lookup (fromEnum WAVEDATA) dict of
-  Just xs -> let (WAVEDE _ WAVEDATA (WENDUB enum)) = (!!) xs ix
-             in fmap Just . joinI . enum $ iter
-  _ -> return Nothing
-
--- | Get the length of data in a dictionary chunk, in bytes.
-dictGetLengthBytes :: WAVECHUNK -> -- type of chunk to read
-                      Int ->        -- index in the chunk list to read
-                      WAVEDict ->   -- dictionary
-                      Maybe Integer -- length of chunk in bytes
-dictGetLengthBytes wc ix dict = IM.lookup (fromEnum wc) dict >>= \xs ->
-  let (WAVEDE off _ _) = (!!) xs ix in Just (fromIntegral off)
-
--- | Get the length of a data chunk, in samples.
-dictGetLengthSamples :: AudioFormat ->
-                        Int ->
-                        WAVEDict ->
-                        Maybe Integer
-dictGetLengthSamples af ix dict = IM.lookup (fromEnum WAVEDATA) dict >>= \xs ->
-  let (WAVEDE off _ _) = (!!) xs ix in Just (fromIntegral off `div` bd)
-  where
-  bd = bitDepth af `div` 8
-
--- ---------------------
 -- combination/utility functions
 
--- |Get the AudioFormat and data length from a file
-dictSoundInfo ::
- (MonadIO m, MonadBaseControl IO m, Functor m) =>
-  WAVEDict
-  -> Iteratee (V.Vector Word8) m
-      (Maybe (AudioFormat, Integer))
-dictSoundInfo dict = do
-  fmtm <- dictReadFirstFormat dict
-  return $ fmtm >>=
-           (\fmt -> fmap (\l -> (fmt, l)) $ dictGetLengthSamples fmt 0 dict)
+dictFormats :: WaveDict -> [AudioFormat]
+dictFormats = mapMaybe f
+  where
+    f WaveFmtChunk{..} = Just waveFormat
+    f _                = Nothing
 
+-- |Get the AudioFormat and data length (in samples) from a file
+-- 
+dictSoundInfo :: WaveDict -> ([AudioFormat], Integer)
+dictSoundInfo = first reverse . L.foldl' f ([],0) . tagDict
+  where
+    getLengthSamples AudioFormat{..} ck =
+      fromIntegral (waveCount ck) `mod` (fromIntegral bitDepth `mod` 8)
+    f (afs,!len) (af,ck) = (af:afs, len + getLengthSamples af ck)
+
+simpleDictSoundInfo :: WaveDict -> Maybe (AudioFormat, Integer)
+simpleDictSoundInfo dict = case dictSoundInfo dict of
+  ([af],len) -> Just (af,len)
+  _          -> Nothing
