@@ -91,6 +91,10 @@ instance ReadableChunk (V.Vector Word8) Word8 where
     fp <- mallocForeignPtrBytes blen
     withForeignPtr fp $ \dest -> copyBytes dest src blen
     return $ V.unsafeFromForeignPtr fp 0 blen
+  fillFromCallback sz cb = do
+      fp <- mallocForeignPtrBytes sz
+      numFill <- withForeignPtr fp $ \p -> cb p sz
+      return (V.unsafeFromForeignPtr fp 0 numFill, numFill)
   empty = V.empty
 
 -- | Operate on a single channel of an audio stream.
