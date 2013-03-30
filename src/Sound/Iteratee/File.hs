@@ -19,7 +19,6 @@ import           Sound.Iteratee.Writer
 import           Data.Iteratee hiding (defaultBufSize)
 import qualified Data.Vector.Storable as V
 
-import           Control.Applicative
 import           Control.Exception
 import           Control.Monad.IO.Class
 import           Control.Monad.Trans.Control

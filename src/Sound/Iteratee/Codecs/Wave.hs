@@ -153,7 +153,7 @@ directWaveReader
 directWaveReader = do
   isRiff <- readRiff
   when (not isRiff) $ throwErr . iterStrExc $ "Bad RIFF header: "
-  I.drop 4  -- total size
+  tot_size <- endianRead4 LSB
   isWave <- readRiffWave
   when (not isWave) $ throwErr . iterStrExc $ "Bad WAVE header: "
   loop1

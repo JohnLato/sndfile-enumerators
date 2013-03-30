@@ -16,7 +16,6 @@ import Sound.Iteratee.Base
 import Sound.Iteratee.Codecs
 
 import Data.Iteratee
-import Data.Iteratee.IO
 import qualified Data.Vector.Storable as V
 import Data.Word (Word8)
 import Control.Monad.IO.Class
