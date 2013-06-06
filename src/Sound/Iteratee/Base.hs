@@ -1,5 +1,6 @@
 {-# LANGUAGE ScopedTypeVariables
             ,FlexibleInstances
+            ,DeriveGeneric
             ,MultiParamTypeClasses
             ,DeriveDataTypeable #-}
 
@@ -47,6 +48,7 @@ import           Data.Word
 
 import           Foreign.Marshal.Utils
 import           Foreign.ForeignPtr
+import           GHC.Generics
 
 -- |Information about the AudioStream
 data AudioStreamState =
@@ -74,7 +76,7 @@ data AudioFormat = AudioFormat {
   numberOfChannels :: NumChannels, -- ^Number of channels in the audio data
   sampleRate :: SampleRate, -- ^Sample rate of the audio data
   bitDepth :: BitDepth -- ^Bit depth of the audio data
-  } deriving (Show, Eq, Data, Typeable)
+  } deriving (Show, Eq, Data, Typeable, Generic)
 
 type NumChannels = Integer
 type SampleRate  = Integer
