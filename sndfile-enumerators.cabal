@@ -14,7 +14,7 @@ Stability:	experimental
 synopsis:       Audio file reading/writing
 category:       Codec, Sound
 build-type:     Simple
-cabal-version:  >= 1.2
+cabal-version:  >= 1.10
 tested-with:    GHC == 6.12.3
 extra-source-files:
   LICENSE
@@ -26,6 +26,7 @@ flag splitBase
   description: Choose the new split-up base package.
 
 Library
+ default-language: Haskell2010
  hs-Source-Dirs:
    src
  ghc-options:
@@ -57,3 +58,7 @@ Library
    Sound.Iteratee.Codecs.WaveWriter
    Sound.Iteratee.Codecs.Common
 
+
+source-repository head
+  type:                git
+  location:            git://github.com/JohnLato/sndfile-enumerators.git
