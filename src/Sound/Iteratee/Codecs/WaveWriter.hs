@@ -1,5 +1,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
+{-# OPTIONS_GHC -Wall #-}
+
 module Sound.Iteratee.Codecs.WaveWriter (
   -- * Types
   WaveCodec (..),
@@ -17,15 +19,14 @@ module Sound.Iteratee.Codecs.WaveWriter (
 where
 
 import Sound.Iteratee.Base
-import Data.Iteratee
 import qualified Data.Vector.Storable as V
-import qualified Data.Iteratee as I
+import IterX
 import Data.Int.Int24
 import qualified Data.ByteString.Lazy as LB
 import qualified Data.ByteString.Char8 as BC
 import qualified Data.Binary.Put as P
 import Control.Monad.IO.Class
-import Control.Monad.Trans.Class
+import Control.Monad
 import Foreign
 
 import System.IO
@@ -51,19 +52,15 @@ instance WritableAudio WaveCodec where
 writeWave ::
   FilePath
   -> AudioFormat
-  -> Iteratee (V.Vector Double) AudioMonad ()
-writeWave fp af = do
-  lift $ openWave fp
-  lift $ writeFormat af
-  lift writeDataHeader
-  icont step
-  lift closeWave
-  lift $ put NoState
-  where
-    step (I.Chunk buf) =
-       writeDataChunk buf >> continue step
-    step NoData = continue step
-    step stream@(EOF{}) = contDoneM () stream
+  -> Consumer AudioMonad (V.Vector Double)
+writeWave fp af chunk = do
+  s0 <- get
+  when (s0 == NoState) $ do
+      openWave fp    -- this sets the state
+      writeFormat af
+      writeDataHeader
+  writeDataChunk chunk
+  -- running the AudioMonad will run closeWave
 {-# INLINE writeWave #-}
 
 -- |Open a wave file for writing
@@ -144,6 +141,7 @@ closeWave = do
       liftIO $ LB.hPut h $ P.runPut $ P.putWord32le $ fromIntegral i'
       liftIO $ hClose h
     WaveState Nothing  _  _ _  _ -> error "Can't close file: no handle"
+    NoState -> return ()  -- already closed, or not opened...
     x -> error $ "Can't close file: isn't a WAVE file: " ++ show x
 {-# INLINE closeWave #-}
 

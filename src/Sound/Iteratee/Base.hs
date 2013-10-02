@@ -2,6 +2,7 @@
             ,FlexibleInstances
             ,DeriveGeneric
             ,MultiParamTypeClasses
+            ,TypeFamilies
             ,DeriveDataTypeable #-}
 
 module Sound.Iteratee.Base (
@@ -39,9 +40,9 @@ import           Control.Monad.Trans.State
 import           Control.Monad.IO.Class
 import           System.IO
 import           Data.Data
-import           Data.Iteratee as I
-import           Data.Iteratee.Base.ReadableChunk
-import           Data.Iteratee.Exception ()
+import           IterX
+import           IterX.ReadableChunk
+import           IterX.Exception
 import           Data.ListLike.Vector.Storable ()
 import qualified Data.Vector.Storable as V
 import           Data.Word
@@ -78,9 +79,9 @@ data AudioFormat = AudioFormat {
   bitDepth :: BitDepth -- ^Bit depth of the audio data
   } deriving (Show, Eq, Data, Typeable, Generic)
 
-type NumChannels = Integer
-type SampleRate  = Integer
-type BitDepth    = Integer
+type NumChannels = Int
+type SampleRate  = Int
+type BitDepth    = Int
 type FrameCount  = Integer
 
 data SupportedBitDepths = Any | Supported [BitDepth]
@@ -88,7 +89,8 @@ data SupportedBitDepths = Any | Supported [BitDepth]
 defaultChunkLength :: Int
 defaultChunkLength = 8190
 
-instance ReadableChunk (V.Vector Word8) Word8 where
+instance ReadableChunk (V.Vector Word8) where
+  type El (V.Vector Word8) = Word8
   readFromPtr src blen = liftIO $ do
     fp <- mallocForeignPtrBytes blen
     withForeignPtr fp $ \dest -> copyBytes dest src blen
@@ -96,7 +98,7 @@ instance ReadableChunk (V.Vector Word8) Word8 where
   fillFromCallback sz cb = do
       fp <- mallocForeignPtrBytes sz
       numFill <- withForeignPtr fp $ \p -> cb p sz
-      return (V.unsafeFromForeignPtr fp 0 numFill, numFill)
+      return $! SizedS numFill $! V.unsafeFromForeignPtr fp 0 numFill
   empty = V.empty
 
 -- | Operate on a single channel of an audio stream.
@@ -104,17 +106,9 @@ getChannel ::
   Monad m
   => Int     -- ^ number of channels
   -> Int     -- ^ channel index (1-based)
-  -> Enumeratee (V.Vector Double) (V.Vector Double) m a
-getChannel 1        m   = \i -> I.drop m >> convStream getChunk i
-getChannel numChans chn = unfoldConvStream mkIter chn
- where
-  mkIter drp = do
-    I.drop drp
-    buf <- getChunk
-    let tlen = V.length buf
-        (nlen,rest) = quotRem tlen numChans
-        newbuf = V.generate nlen (\i -> V.unsafeIndex buf (i*numChans))
-    return (rest, newbuf)
+  -> Transducer (GenT (V.Vector Double) (StateT s m)) m (V.Vector Double) (V.Vector Double)
+getChannel 1        m   = error "getChannel: not implemented"
+getChannel numChans chn = error "getChannel: not implemented"
 
 -- Audio Exceptions
 
@@ -122,16 +116,16 @@ data UnknownFileTypeException =
   UnknownFileTypeException deriving (Eq, Show, Typeable)
 
 instance Exception UnknownFileTypeException where
-  toException = iterExceptionToException
-  fromException = iterExceptionFromException
+  toException = iExceptionToException
+  fromException = iExceptionFromException
 
 instance IException UnknownFileTypeException where
 
 data CorruptFileException = CorruptFileException deriving (Eq, Show, Typeable)
 
 instance Exception CorruptFileException where
-  toException = iterExceptionToException
-  fromException = iterExceptionFromException
+  toException = iExceptionToException
+  fromException = iExceptionFromException
 
 instance IException CorruptFileException where
 
@@ -139,7 +133,7 @@ data MissingFormatException =
   MissingFormatException deriving (Eq, Show, Typeable)
 
 instance Exception MissingFormatException where
-  toException = iterExceptionToException
-  fromException = iterExceptionFromException
+  toException = iExceptionToException
+  fromException = iExceptionFromException
 
 instance IException MissingFormatException where

@@ -1,23 +1,32 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE NoMonomorphismRestriction #-}
 
+{-# OPTIONS_GHC -Wall #-}
 module Sound.Iteratee.Codecs.Common (
   joinMaybe
- ,convFunc
+
+ ,RawFormattedChunk(..)
+ ,NormFormattedChunk(..)
+ ,nfChunkData
+ ,convTrans
+ ,quantizeRaw
+ ,chunkFactor
 )
   
 where
 
 import           Sound.Iteratee.Base
-import           Data.Iteratee as I
 import qualified Data.Vector.Storable as V
 import           Foreign.ForeignPtr
 import           Foreign.Marshal.Utils (with)
 import           Foreign.Storable
 import           System.IO.Unsafe (unsafePerformIO)
-import           Control.Applicative
 import           Data.Bits
 import           Data.Int
 import           Data.Int.Int24
+import           IterX
+import           Data.Monoid
 import           Data.Word
 import           Data.Word.Word24
 import           Data.ListLike.Vector.Storable ()
@@ -29,45 +38,6 @@ import           Data.ListLike.Vector.Storable ()
 -- determine host endian-ness
 be :: IO Bool
 be = fmap (==1) $ with (1 :: Word16) (\p -> peekByteOff p 1 :: IO Word8)
-
-unroll8 :: (Monad m) => Iteratee (V.Vector Word8) m (V.Vector Word8)
-unroll8 = I.getChunk
-
--- When unrolling to a Word8, use the specialized unroll8 function
--- because we actually don't need to do anything
-{-# RULES "unroll8" forall n. unroller n = unroll8 #-}
-unroller :: (Storable a, Monad m, Functor m) =>
-  Int
-  -> Iteratee (V.Vector Word8) m (V.Vector a)
-unroller wSize = icont step
-  where
-  step NoData = continue step
-  step (I.Chunk buf)
-   | V.null buf = continue step
-   | otherwise = do
-    let len = V.length buf
-    if len < wSize
-      then continue $ step' buf
-      else if len `rem` wSize == 0
-              then do
-                let buf' = hostToLE buf
-                contDoneM buf' NoData
-              else let newLen = (len `div` wSize) * wSize
-                       h      = hostToLE $ V.take newLen buf
-                       t      = V.drop newLen buf
-                   in contDoneM h $ I.Chunk t
-  step stream@(EOF{}) = contDoneM V.empty stream
-  step' i NoData = continue (step' i)
-  step' i (I.Chunk buf)
-   | V.null buf = continue (step' i)
-   | otherwise = do
-    let l    = V.length buf
-        iLen = V.length i
-        newbuf = i V.++ buf
-    if l+iLen < wSize
-       then continue (step' newbuf)
-       else step (I.Chunk newbuf)
-  step' _i stream@(EOF{}) = contDoneM V.empty stream
 
 hostToLE :: forall a. Storable a => V.Vector Word8 -> V.Vector a
 hostToLE vec = let be' = unsafePerformIO be in if be'
@@ -111,30 +81,6 @@ swapBytes wSize fp = withForeignPtr fp $ \p -> case wSize of
 w8 :: Word8
 w8 = 0
 -}
-w16 :: Word16
-w16 = 0
-w24 :: Word24
-w24 = 0
-w32 :: Word32
-w32 = 0
-
--- |Convert Word8s to Doubles
-convFunc :: (Monad m, Functor m) =>
-  AudioFormat
-  -> Iteratee (V.Vector Word8) m (V.Vector Double)
-convFunc (AudioFormat _nc _sr 8) =
-  V.map (normalize 8 . (fromIntegral :: Word8 -> Int8)) <$> unroll8
-convFunc (AudioFormat _nc _sr 16) =
-  V.map (normalize 16 . (fromIntegral :: Word16 -> Int16))
-    <$> unroller (sizeOf w16)
-convFunc (AudioFormat _nc _sr 24) =
-  V.map (normalize 24 . (fromIntegral :: Word24 -> Int24))
-    <$> unroller (sizeOf w24)
-convFunc (AudioFormat _nc _sr 32) =
-  V.map (normalize 32 . (fromIntegral :: Word32 -> Int32))
-    <$> unroller (sizeOf w32)
-convFunc _ = I.throwErr (I.iterStrExc "Invalid wave bit depth")
-
 
 -- ---------------------
 -- convenience functions
@@ -156,3 +102,53 @@ normalize bd = \a -> if a > 0
     mPos = 1/ (fromIntegral (1 `shiftL` fromIntegral (bd - 1) :: Integer) - 1)
     mNeg = 1/ fromIntegral (1 `shiftL` fromIntegral (bd - 1) :: Integer)
 
+
+data RawFormattedChunk =
+    RawFormattedChunk !AudioFormat !(V.Vector Word8)
+
+data NormFormattedChunk =
+    NormFormattedChunk !AudioFormat !(V.Vector Double)
+
+nfChunkData :: NormFormattedChunk -> V.Vector Double
+nfChunkData (NormFormattedChunk _ v) = v
+
+chunkFactor :: AudioFormat -> Int
+chunkFactor (AudioFormat nc _ bd) = nc * (bd `div` 8)
+
+-- align raw chunks to bitdepth/channel boundaries
+quantizeRaw :: Monad m => Transducer (GenT RawFormattedChunk (StateT (V.Vector Word8) m)) m RawFormattedChunk RawFormattedChunk
+quantizeRaw = streamG f V.empty
+  where
+    f pre (RawFormattedChunk af v) =
+      let len' = V.length v + V.length pre
+      in case len' `rem` chunkFactor af of
+          0 -> let !v' = pre <> v
+               in if V.null v'
+                    then (pre,[])
+                    else (pre,[RawFormattedChunk af v'])
+          n -> case len' > chunkFactor af of
+              True  -> let !v' = pre <> v
+                           !h  = V.unsafeTake (len'-n) v'
+                           !r  = V.unsafeDrop (len'-n) v'
+                       in (r, [RawFormattedChunk af h])
+              False -> (pre<>v,[])
+
+convTrans :: (Monad m, Functor m) => Transducer (GenT RawFormattedChunk (StateT (V.Vector Word8) (GenT NormFormattedChunk m))) m RawFormattedChunk NormFormattedChunk
+convTrans = unsafeConvTrans . quantizeRaw
+
+-- |Convert Word8s to Doubles
+-- This function should only be applied after 'quantizeRaw', or if the
+-- vectors are otherwise known to be sized appropriately
+unsafeConvTrans :: (Monad m, Functor m) =>
+  Transducer (GenT NormFormattedChunk m) m RawFormattedChunk NormFormattedChunk
+unsafeConvTrans = mapG (\(RawFormattedChunk af v) -> f af (bitDepth af) v)
+  where
+    f af 8 = NormFormattedChunk af .
+      V.map (normalize 8 . (fromIntegral :: Word8 -> Int8)) . hostToLE
+    f af 16 = NormFormattedChunk af .
+      V.map (normalize 16 . (fromIntegral :: Word16 -> Int16)) . hostToLE
+    f af 24 = NormFormattedChunk af .
+      V.map (normalize 24 . (fromIntegral :: Word24 -> Int24)) . hostToLE
+    f af 32 = NormFormattedChunk af .
+      V.map (normalize 32 . (fromIntegral :: Word32 -> Int32)) . hostToLE
+    f af _ = error $ "Invalid wave bit depth " ++ show af

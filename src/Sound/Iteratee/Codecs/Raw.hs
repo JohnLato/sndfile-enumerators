@@ -2,7 +2,6 @@
 
 module Sound.Iteratee.Codecs.Raw (
   RawCodec (..)
-  ,readRaw
 )
 
 where
@@ -10,7 +9,6 @@ where
 import           Sound.Iteratee.Base
 import           Sound.Iteratee.Codecs.Common
 
-import           Data.Iteratee as I
 import qualified Data.Vector.Storable as V
 
 import           Data.Word
@@ -24,12 +22,3 @@ instance WritableAudio RawCodec where
   initState          RawCodec _ = error "initState not defined for Raw files"
   supportedBitDepths RawCodec   = Any
   fileType           RawCodec   = Raw
-
-readRaw ::
- (MonadIO m, MonadBaseControl IO m, Functor m) =>
-  AudioFormat
-  -> Iteratee (V.Vector Double) m a
-  -> Iteratee (V.Vector Word8) m a
-readRaw fmt iter_dub = do
-  joinI . convStream (convFunc fmt) $ iter_dub
-

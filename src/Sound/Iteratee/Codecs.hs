@@ -4,7 +4,8 @@ module Sound.Iteratee.Codecs (
   module Sound.Iteratee.Codecs.Wave,
   getWriter,
   Codec (..),
-  getCodec
+  getCodec,
+  module Sound.Iteratee.Codecs.Common
 )
 
 where
@@ -12,7 +13,8 @@ where
 import Sound.Iteratee.Base
 import Sound.Iteratee.Codecs.Wave
 import Sound.Iteratee.Codecs.Raw
-import Data.Iteratee
+import Sound.Iteratee.Codecs.Common (RawFormattedChunk(..), NormFormattedChunk(..), nfChunkData)
+import IterX
 
 import qualified Data.Vector.Storable as V
 
@@ -21,7 +23,7 @@ getWriter ::
   SupportedFileFormat
   -> FilePath
   -> AudioFormat
-  -> Iteratee (V.Vector Double) AudioMonad ()
+  -> Consumer AudioMonad (V.Vector Double)
 getWriter Wave = writeWave
 getWriter Raw  = error "No writer defined for Raw format"
 

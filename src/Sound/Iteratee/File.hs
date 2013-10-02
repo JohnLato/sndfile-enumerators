@@ -1,26 +1,24 @@
 {-# LANGUAGE RankNTypes, FlexibleContexts #-}
 
+{-# OPTIONS_GHC -Wall #-}
 module Sound.Iteratee.File (
   getFormat
  ,getAudioInfo
- ,runAudioIteratee
- ,tryRunAudioIteratee
- ,enumAudioIteratee
- ,enumAudioIterateeWithFormat
  ,defaultBufSize
+
+ ,genAudio
+ ,runAudioConsumer
 )
 
 where
 
 import           Sound.Iteratee.Base
 import           Sound.Iteratee.Codecs
+import           Sound.Iteratee.Codecs.Common
 import           Sound.Iteratee.Codecs.Wave ()
 import           Sound.Iteratee.Writer
-import           Data.Iteratee hiding (defaultBufSize)
-import qualified Data.Vector.Storable as V
+import           IterX
 
-import           Control.Applicative
-import           Control.Monad.IO.Class
 import           Control.Monad.Trans.Control
 import           System.FilePath
 import           Data.Char
@@ -43,40 +41,20 @@ getFormat fp = case ext of
 -- from a file
 getAudioInfo :: FilePath -> IO (Maybe (AudioFormat, Integer))
 getAudioInfo fp = case getFormat fp of
-  Just Wave -> fileDriverAudio (simpleDictSoundInfo <$> waveReadDict) fp
+  Just Wave -> error "getAudioInfo: TODO"  -- fileDriverAudio (simpleDictSoundInfo <$> waveReadDict) fp
   Just Raw  -> return Nothing
   _         -> return Nothing -- could try everything and see what matches...
 {-# INLINE getAudioInfo #-}
 
-enumAudioIterateeWithFormat ::
-  (MonadIO m, MonadBaseControl IO m, Functor m)
-  => FilePath
-  -> (AudioFormat -> Iteratee (V.Vector Double) m a)
-  -> m (Iteratee (V.Vector Double) m a)
-enumAudioIterateeWithFormat fp fi = case getFormat fp of
-  Just Wave -> run =<< enumAudioFile defaultBufSize fp (directWaveReader >>= \(af, etee) -> etee $ fi af)
-  Just Raw  -> return . throwErr $ iterStrExc "Raw format not yet implemented"
-  _         -> return . throwErr $ iterStrExc "Raw format not yet implemented"
- where
-{-# INLINE enumAudioIterateeWithFormat #-}
+genAudio :: (MonadBaseControl IO m, Functor m)
+         => FilePath -> Producer m NormFormattedChunk
+genAudio fp = case getFormat fp of
+    Just Wave -> rawToWaveTrans $ yieldFileChunks fp defaultBufSize
+    Just Raw  -> error "genAudio: Raw format not implemented"
+    Nothing   -> error $ "genAudio: couldn't determine file format: " ++ show fp
 
-enumAudioIteratee ::
-  (MonadIO m, MonadBaseControl IO m, Functor m)
-  => FilePath
-  -> Iteratee (V.Vector Double) m a
-  -> m (Iteratee (V.Vector Double) m a)
-enumAudioIteratee fp i = enumAudioIterateeWithFormat fp (const i)
-{-# INLINE enumAudioIteratee #-}
-
-runAudioIteratee ::
+runAudioConsumer ::
   FilePath
-  -> Iteratee (V.Vector Double) AudioMonad a
-  -> IO a
-runAudioIteratee fp i = runAudioMonad $ enumAudioIteratee fp i >>= run
-{-# INLINE runAudioIteratee #-}
-
-tryRunAudioIteratee ::
-  FilePath
-  -> Iteratee (V.Vector Double) AudioMonad a
-  -> IO (Either IFException a)
-tryRunAudioIteratee fp i = runAudioMonad $ enumAudioIteratee fp i >>= tryRun
+  -> Consumer AudioMonad NormFormattedChunk
+  -> IO ()
+runAudioConsumer fp c = runAudioMonad $ runGenT (genAudio fp) c
