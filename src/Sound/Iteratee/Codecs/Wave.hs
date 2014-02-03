@@ -124,7 +124,7 @@ chunkToString (WaveOther str) = str
 -- | parse the "RIFF/WAVE" headers and get the total size of the file.
 riffWaveReader :: Monad m => IterX (V.Vector Word8) m Int
 riffWaveReader = readRiff
-    *> fmap ((-) 4 . fromIntegral) getWord32le <* readRiffWave
+    *> fmap (subtract 4 . fromIntegral) getWord32le <* readRiffWave
 
 rawToWaveTrans :: (Monad m, Functor m)
                => Transform' m (V.Vector Word8) NormFormattedChunk
