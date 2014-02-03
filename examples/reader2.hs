@@ -10,6 +10,7 @@ import Prelude as P
 import           Sound.Iteratee
 import qualified Data.Vector.Storable as V
 import           IterX
+import           IterX.Fusion
 import           System.Environment
 
 main :: IO ()
@@ -19,9 +20,10 @@ main = do
     [] -> putStrLn "Usage: wave_reader FileName"
     fname:_ -> do
       putStrLn $ "Reading file: " ++ fname
-      e <- runAudioMonad $ foldG maxf1 0
-            $ mapsG (V.toList . nfChunkData) $ genAudio fname
+      e <- runAudioMonad $ runFold
+            (maps nfChunkData . foldUnfolding unfoldVec $ folding maxf1 0)
+            $ genAudio fname
       print e
 
-maxf1 :: Monad m => Double -> Double -> m Double
-maxf1 (!s') n = return $ max s' (abs n)
+maxf1 :: Double -> Double -> Double
+maxf1 (!s') n = max s' (abs n)

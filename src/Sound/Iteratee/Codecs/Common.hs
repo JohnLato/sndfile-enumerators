@@ -25,7 +25,7 @@ import           System.IO.Unsafe (unsafePerformIO)
 import           Data.Bits
 import           Data.Int
 import           Data.Int.Int24
-import           IterX
+import           IterX.Fusion
 import           Data.Monoid
 import           Data.Word
 import           Data.Word.Word24
@@ -116,8 +116,8 @@ chunkFactor :: AudioFormat -> Int
 chunkFactor (AudioFormat nc _ bd) = nc * (bd `div` 8)
 
 -- align raw chunks to bitdepth/channel boundaries
-quantizeRaw :: Monad m => Transducer (GenT RawFormattedChunk (StateT (V.Vector Word8) m)) m RawFormattedChunk RawFormattedChunk
-quantizeRaw = streamG f V.empty
+quantizeRaw :: Monad m => Transform' m RawFormattedChunk RawFormattedChunk
+quantizeRaw = mealy f V.empty
   where
     f pre (RawFormattedChunk af v) =
       let len' = V.length v + V.length pre
@@ -133,15 +133,15 @@ quantizeRaw = streamG f V.empty
                        in (r, [RawFormattedChunk af h])
               False -> (pre<>v,[])
 
-convTrans :: (Monad m, Functor m) => Transducer (GenT RawFormattedChunk (StateT (V.Vector Word8) (GenT NormFormattedChunk m))) m RawFormattedChunk NormFormattedChunk
-convTrans = unsafeConvTrans . quantizeRaw
+convTrans :: (Monad m, Functor m) => Transform' m RawFormattedChunk NormFormattedChunk
+convTrans = quantizeRaw . unsafeConvTrans
 
 -- |Convert Word8s to Doubles
 -- This function should only be applied after 'quantizeRaw', or if the
 -- vectors are otherwise known to be sized appropriately
 unsafeConvTrans :: (Monad m, Functor m) =>
-  Transducer (GenT NormFormattedChunk m) m RawFormattedChunk NormFormattedChunk
-unsafeConvTrans = mapG (\(RawFormattedChunk af v) -> f af (bitDepth af) v)
+  Transform' m RawFormattedChunk NormFormattedChunk
+unsafeConvTrans = maps (\(RawFormattedChunk af v) -> f af (bitDepth af) v)
   where
     f af 8 = NormFormattedChunk af .
       V.map (normalize 8 . (fromIntegral :: Word8 -> Int8)) . hostToLE

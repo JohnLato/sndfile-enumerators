@@ -18,6 +18,7 @@ import           Sound.Iteratee.Codecs.Common
 import           Sound.Iteratee.Codecs.Wave ()
 import           Sound.Iteratee.Writer
 import           IterX
+import           IterX.Fusion
 
 import           Control.Monad.Trans.Control
 import           System.FilePath
@@ -49,9 +50,11 @@ getAudioInfo fp = case getFormat fp of
 genAudio :: (MonadBaseControl IO m, Functor m)
          => FilePath -> Producer m NormFormattedChunk
 genAudio fp = case getFormat fp of
-    Just Wave -> rawToWaveTrans $ yieldFileChunks fp defaultBufSize
+    Just Wave -> transduceFold rawToWaveTrans
+                  $ yieldFileChunks fp defaultBufSize
     Just Raw  -> error "genAudio: Raw format not implemented"
     Nothing   -> error $ "genAudio: couldn't determine file format: " ++ show fp
+{-# INLINE [1] genAudio #-}
 
 runAudioConsumer ::
   FilePath

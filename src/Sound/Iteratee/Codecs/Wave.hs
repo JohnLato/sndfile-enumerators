@@ -45,11 +45,11 @@ import Sound.Iteratee.Base
 import Sound.Iteratee.Codecs.Common
 
 import qualified Data.Vector.Storable as V
-import           Data.Monoid
 
 import           IterX
 import           IterX.Parser as IterX
 import           IterX.Parser.Binary
+import           IterX.Fusion
 
 import           Data.Word
 import           Data.Char (chr, ord)
@@ -126,18 +126,21 @@ riffWaveReader :: Monad m => IterX (V.Vector Word8) m Int
 riffWaveReader = readRiff
     *> fmap ((-) 4 . fromIntegral) getWord32le <* readRiffWave
 
--- some f'ing huge type signature...
-rawToWaveTrans = convTrans . chunkTrans . riffWaveTrans
+rawToWaveTrans :: (Monad m, Functor m)
+               => Transform' m (V.Vector Word8) NormFormattedChunk
+rawToWaveTrans = riffWaveTrans . chunkTrans . convTrans
 
-riffWaveTrans :: Monad m => Transducer (GenT (V.Vector Word8) (StateT (DelState (V.Vector Word8) m Int) m)) m (V.Vector Word8) (V.Vector Word8)
-riffWaveTrans = delimitN riffWaveReader
+riffWaveTrans :: Monad m => Transform' m (V.Vector Word8) (V.Vector Word8)
+riffWaveTrans = tdelimitN riffWaveReader
 
 chunkTrans :: Monad m
-    => Transducer (GenT RawFormattedChunk (StateT (DelState (V.Vector Word8) m (Int,AudioFormat)) m))
-        m
-        (V.Vector Word8) RawFormattedChunk
-chunkTrans = delimitG i0 f
+    => Transform' m (V.Vector Word8) (RawFormattedChunk)
+chunkTrans ofold@(FoldM _ ofs ofOut) =
+    delimitFold3 i0 mkF mkEnd finalFold
   where
+    finalFold = FoldM (\_ c -> return $ Right c) (Left ofs) (either ofOut return)
+    mkF (_,af) = maps (RawFormattedChunk af) ofold
+    mkEnd (cnt,_) = foldIterLeftover $ IterX.splitChunkAt cnt
     i0 = do
         af0 <- snd <$> nextFormatChunk
         t1 <- waveChunkType
@@ -145,14 +148,6 @@ chunkTrans = delimitG i0 f
         case t1 of
             WaveData -> return (cnt,af0)
             _        -> error "chunkTrans: horrible hack needs a real impl"
-    -- (st -> inp -> (Either st inp, [outp]))
-    f (!n,af) rawInp =
-        let len = V.length rawInp
-        in if len <= n
-          then (Left (n-len,af),[RawFormattedChunk af rawInp])
-          else let !h = V.unsafeTake n rawInp
-                   !t = V.unsafeDrop n rawInp
-               in (Right t, [RawFormattedChunk af h])
 
 -- the 'take' problem
 -- Option 1:
