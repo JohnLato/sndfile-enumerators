@@ -1,6 +1,6 @@
 {-# LANGUAGE RankNTypes, FlexibleContexts #-}
 
-{-# OPTIONS_GHC -Wall #-}
+{-# OPTIONS_GHC -Wall -fsimpl-tick-factor=200 #-}
 module Sound.Iteratee.File (
   getFormat
  ,getAudioInfo
@@ -14,7 +14,6 @@ where
 
 import           Sound.Iteratee.Base
 import           Sound.Iteratee.Codecs
-import           Sound.Iteratee.Codecs.Common
 import           Sound.Iteratee.Codecs.Wave ()
 import           Sound.Iteratee.Writer
 import           IterX
@@ -48,9 +47,9 @@ getAudioInfo fp = case getFormat fp of
 {-# INLINE getAudioInfo #-}
 
 genAudio :: (MonadBaseControl IO m, Functor m)
-         => FilePath -> Producer m NormFormattedChunk
-genAudio fp = case getFormat fp of
-    Just Wave -> transduceFold rawToWaveTrans
+         => FilePath -> FoldM m NormFormattedChunk o -> m o
+genAudio fp ofold = case getFormat fp of
+    Just Wave -> runFold (rawToWaveTrans ofold)
                   $ yieldFileChunks fp defaultBufSize
     Just Raw  -> error "genAudio: Raw format not implemented"
     Nothing   -> error $ "genAudio: couldn't determine file format: " ++ show fp
@@ -60,4 +59,5 @@ runAudioConsumer ::
   FilePath
   -> Consumer AudioMonad NormFormattedChunk
   -> IO ()
-runAudioConsumer fp c = runAudioMonad $ runGenT (genAudio fp) c
+runAudioConsumer fp c = runAudioMonad $ genAudio fp
+                          $ foldingM (\_ o -> c o) ()

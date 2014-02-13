@@ -23,8 +23,8 @@ module Sound.Iteratee.Codecs.Wave (
   waveChunk,
   
   rawToWaveTrans,
-  riffWaveTrans,
-  chunkTrans,
+  -- riffWaveTrans,
+  -- chunkTrans,
   -- * Wave writing files
   -- ** Writing iteratees
   writeWave,
@@ -129,18 +129,24 @@ riffWaveReader = readRiff
 rawToWaveTrans :: (Monad m, Functor m)
                => Transform' m (V.Vector Word8) NormFormattedChunk
 rawToWaveTrans = riffWaveTrans . chunkTrans . convTrans
+{-# INLINE [1] rawToWaveTrans #-}
 
+{-# INLINE riffWaveTrans #-}
 riffWaveTrans :: Monad m => Transform' m (V.Vector Word8) (V.Vector Word8)
 riffWaveTrans = tdelimitN riffWaveReader
 
+{-# INLINE chunkTrans #-}
 chunkTrans :: Monad m
     => Transform' m (V.Vector Word8) (RawFormattedChunk)
 chunkTrans ofold@(FoldM _ ofs ofOut) =
     delimitFold3 i0 mkF mkEnd finalFold
   where
+    {-# INLINE finalFold #-}
     finalFold = FoldM (\_ c -> return $ Right c) (Left ofs) (either ofOut return)
-    mkF (_,af) = maps (RawFormattedChunk af) ofold
-    mkEnd (cnt,_) = foldIterLeftover $ IterX.splitChunkAt cnt
+    {-# INLINE mkF #-}
+    mkF (_,af) = {-# SCC "chunkTrans/mkF" #-} maps (RawFormattedChunk af) ofold
+    {-# INLINE mkEnd #-}
+    mkEnd (cnt,_) = {-# SCC "chunkTrans/mkEnd" #-} foldIterLeftover $ IterX.splitChunkAt cnt
     i0 = do
         af0 <- snd <$> nextFormatChunk
         t1 <- waveChunkType
