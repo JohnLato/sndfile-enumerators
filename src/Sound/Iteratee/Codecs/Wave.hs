@@ -1,3 +1,4 @@
+{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
@@ -56,8 +57,7 @@ import           Data.Char (chr, ord)
 
 import           Control.Applicative
 import           Control.Monad
-import           Control.Monad.Trans.Control
-import           Control.Monad.IO.Class
+import qualified Control.Monad.Catch as E
 
 -- =====================================================
 -- WAVE libary code
@@ -126,27 +126,25 @@ riffWaveReader :: Monad m => IterX (V.Vector Word8) m Int
 riffWaveReader = readRiff
     *> fmap (subtract 4 . fromIntegral) getWord32le <* readRiffWave
 
-rawToWaveTrans :: (Monad m, Functor m)
+rawToWaveTrans :: (ExIO m, Functor m)
                => Transform' m (V.Vector Word8) NormFormattedChunk
 rawToWaveTrans = riffWaveTrans . chunkTrans . convTrans
 {-# INLINE [1] rawToWaveTrans #-}
 
 {-# INLINE riffWaveTrans #-}
-riffWaveTrans :: Monad m => Transform' m (V.Vector Word8) (V.Vector Word8)
+riffWaveTrans :: E.MonadCatch m => Transform' m (V.Vector Word8) (V.Vector Word8)
 riffWaveTrans = tdelimitN riffWaveReader
 
 {-# INLINE chunkTrans #-}
-chunkTrans :: Monad m
+chunkTrans :: E.MonadCatch m
     => Transform' m (V.Vector Word8) (RawFormattedChunk)
 chunkTrans ofold@(FoldM _ ofs ofOut) =
-    delimitFold3 i0 mkF mkEnd finalFold
+    delimitFold4 i0 mkF finalFold
   where
     {-# INLINE finalFold #-}
     finalFold = FoldM (\_ c -> return $ Right c) (Left ofs) (either ofOut return)
     {-# INLINE mkF #-}
-    mkF (_,af) = {-# SCC "chunkTrans/mkF" #-} maps (RawFormattedChunk af) ofold
-    {-# INLINE mkEnd #-}
-    mkEnd (cnt,_) = {-# SCC "chunkTrans/mkEnd" #-} foldIterLeftover $ IterX.splitChunkAt cnt
+    mkF af = {-# SCC "chunkTrans/mkF" #-} maps (RawFormattedChunk af) ofold
     i0 = do
         af0 <- snd <$> nextFormatChunk
         t1 <- waveChunkType
@@ -194,7 +192,7 @@ nextFormatChunk = do
 -- | An alternative way of reading a Wave file, reading over the file in one
 -- direct pass instead of constructing a dictionary.
 directWaveReader
-  :: (MonadIO m, MonadBaseControl IO m, Functor m)
+  :: (ExIO m, Functor m)
   => IterX (V.Vector Word8) m
        (AudioFormat, Transducer m m (V.Vector Word8) (V.Vector Double))
 directWaveReader = do

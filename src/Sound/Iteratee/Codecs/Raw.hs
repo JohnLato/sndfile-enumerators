@@ -9,12 +9,6 @@ where
 import           Sound.Iteratee.Base
 import           Sound.Iteratee.Codecs.Common
 
-import qualified Data.Vector.Storable as V
-
-import           Data.Word
-import           Control.Monad.Trans.Control
-import           Control.Monad.IO.Class
-
 data RawCodec = RawCodec
 
 instance WritableAudio RawCodec where

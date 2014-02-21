@@ -37,10 +37,10 @@ Library
    binary                    >= 0.5   && < 0.8,
    bytestring                >= 0.9.1 && < 0.11,
    containers                >= 0.2   && < 0.6,
+   exceptions                >=0.3  && <0.4,
    iterX                     == 0.1.*,
    filepath                  >= 1.0   && < 2.0,
    ListLike                  == 4.*,
-   monad-control             >= 0.3   && < 0.4,
    transformers              >= 0.2   && < 0.4,
    vector                    >= 0.6   && < 0.11,
    word24                    >= 1     && < 2.0

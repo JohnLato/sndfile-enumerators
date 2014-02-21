@@ -1,4 +1,6 @@
-{-# LANGUAGE RankNTypes, FlexibleContexts #-}
+{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE RankNTypes #-}
 
 {-# OPTIONS_GHC -Wall -fsimpl-tick-factor=200 #-}
 module Sound.Iteratee.File (
@@ -19,7 +21,6 @@ import           Sound.Iteratee.Writer
 import           IterX
 import           IterX.Fusion
 
-import           Control.Monad.Trans.Control
 import           System.FilePath
 import           Data.Char
 
@@ -46,7 +47,7 @@ getAudioInfo fp = case getFormat fp of
   _         -> return Nothing -- could try everything and see what matches...
 {-# INLINE getAudioInfo #-}
 
-genAudio :: (MonadBaseControl IO m, Functor m)
+genAudio :: (ExIO m, Functor m)
          => FilePath -> FoldM m NormFormattedChunk o -> m o
 genAudio fp ofold = case getFormat fp of
     Just Wave -> runFold (rawToWaveTrans ofold)
