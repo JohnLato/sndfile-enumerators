@@ -117,7 +117,7 @@ nfChunkData :: NormFormattedChunk -> V.Vector Double
 nfChunkData (NormFormattedChunk _ v) = v
 
 chunkFactor :: AudioFormat -> Int
-chunkFactor (AudioFormat nc _ bd) = nc * (bd `div` 8)
+chunkFactor (AudioFormat nc _ bd) = nc * (bd `shiftR` 3)
 
 -- align raw chunks to bitdepth boundaries
 quantizeRaw :: Monad m => Transform' m RawFormattedChunk RawFormattedChunk
@@ -162,14 +162,46 @@ convTrans2 ofold0 = FoldM loop Nothing (maybe (getFold ofold0) getFold)
         ofold' <- stepFold (tf ofold0) vec
         return (Just ofold')
 
-{-# INLINE unfRaw #-}
+{-# INLINE [1] unfRaw #-}
 unfRaw :: MonadIO m => AudioFormat -> Transform' m (V.Vector Word8) (V.Vector Double)
 unfRaw af = case bitDepth af of
     8  -> foldUnfolding unfoldVec . maps (fromIntegral :: Word8 -> Int8) . maps (normalize 8) . foldVec osize
-    16 -> foldUnfolding unfoldVec . fold16 . maps (normalize 16) . foldVec osize
+    -- 16 -> uf16 . maps (normalize 16) . foldVec osize
+    16 -> foldUnfolding unfoldUf16 . maps (normalize 16 :: Int16 -> Double) . foldVec osize
     24 -> foldUnfolding unfoldVec . maps fromIntegral . fold24 . maps (normalize 24) . foldVec osize
   where
-    osize = 64
+    osize = 256
+
+{-# INLINE unfoldUf16 #-}
+unfoldUf16 :: Monad m => UnfoldM m (V.Vector Word8) Int16
+unfoldUf16 = UnfoldM mk f
+  where
+    mk vec | V.length vec `rem` 2 == 0 = case V.unsafeToForeignPtr vec of
+              (p,a,b) -> return $ V.unsafeFromForeignPtr (castForeignPtr p :: ForeignPtr Int16) a (b `shiftR` 1)
+           | otherwise = error "extras"
+
+    {-# INLINE f #-}
+    f v | not (V.null v) = return $ UnfoldStep (V.unsafeHead v) (V.unsafeDrop 1 v)
+        | otherwise = unfoldDone
+
+{-# INLINE uf16 #-}
+uf16 :: Monad m => Transform' m (V.Vector Word8) Int16
+uf16 = umealy f S1_0'
+  where
+    f S1_0' vec
+      | V.null vec = (S1_0', unfoldEmpty)
+      | V.length vec `rem` 2 == 0 = (S1_0', ufVec vec)
+      | otherwise = (S1_1' $ V.unsafeLast vec, ufVec $ V.unsafeInit vec)
+    f' v | not (V.null v) = return $ UnfoldStep (V.unsafeHead v) (V.unsafeDrop 1 v)
+         | otherwise = unfoldDone
+    {-# INLINE ufVec #-}
+    ufVec vec = UnfoldM (const $ return v') f'
+        where
+          v' :: V.Vector Int16
+          v' = case V.unsafeToForeignPtr vec of
+              (p,a,b) -> V.unsafeFromForeignPtr (castForeignPtr p) a (b `shiftR` 1)
+
+data S1' = S1_0' | S1_1' !Word8
 
 {-# INLINE fold16 #-}
 fold16 :: Monad m => Transform' m Word8 Int16
