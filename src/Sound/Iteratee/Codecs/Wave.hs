@@ -128,6 +128,7 @@ riffWaveReader = readRiff
 
 rawToWaveTrans :: (ExIO m, Functor m)
                => Transform' m (V.Vector Word8) NormFormattedChunk
+-- rawToWaveTrans = riffWaveTrans . chunkTrans2 convTrans2
 rawToWaveTrans = riffWaveTrans . chunkTrans . convTrans
 {-# INLINE [1] rawToWaveTrans #-}
 
@@ -152,6 +153,21 @@ chunkTrans ofold@(FoldM _ ofs ofOut) =
         case t1 of
             WaveData -> return (cnt,af0)
             _        -> error "chunkTrans: horrible hack needs a real impl"
+
+{-# INLINE chunkTrans2 #-}
+chunkTrans2 :: E.MonadCatch m
+    => (AudioFormat -> Transform' m (V.Vector Word8) b) -> Transform' m (V.Vector Word8) b
+chunkTrans2 foldFormat ofold =
+    delimitFold4 i0 (\af -> foldFormat af ofold) (foldLast $ error "chunkTrans2: no audio data")
+  where
+    i0 = do
+        af0 <- snd <$> nextFormatChunk
+        t1 <- waveChunkType
+        cnt <- fromIntegral <$> getWord32le
+        case t1 of
+            WaveData -> return (cnt,af0)
+            _        -> error "chunkTrans: horrible hack needs a real impl"
+
 
 -- the 'take' problem
 -- Option 1:

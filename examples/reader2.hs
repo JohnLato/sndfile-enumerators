@@ -3,7 +3,7 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE FlexibleInstances #-}
 
-{-# OPTIONS_GHC -fsimpl-tick-factor=800 #-}
+{-# OPTIONS_GHC -fsimpl-tick-factor=200 #-}
 module Main where
 
 import Prelude as P
@@ -25,6 +25,11 @@ main = do
             genAudio fname t1
       print e
 
+{-# RULES
+-- this rule seems to hurt, needs a little more investigation?
+-- "<iterx>maps/foldingM" forall f g s. maps f (foldingM g s) = foldingM (\b -> g b . f) s
+      #-}
+
 {-# INLINE t1 #-}
 -- the ForceSpecConstr in foldUnfolding helps a lot, but it's still
 -- 25% slower than the vector version.
@@ -33,7 +38,7 @@ main = do
 --
 -- foldFoldable is slow, because the inner loop isn't unboxed?  WTF?
 t1 :: FoldM AudioMonad NormFormattedChunk Double
-t1 = maps nfChunkData . foldUnfolding unfoldVec $ maps abs $ folding max 0
+t1 = maps nfChunkData . foldUnfolding2 unfold2Vec . maps abs $ folding max 0
 -- t1 = maps nfChunkData . foldUnfolding unfoldVec $ folding maxf1 0
 -- t1 = maps nfChunkData . maps (V.maximum . V.map abs) $ folding max 0
 

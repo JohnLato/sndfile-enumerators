@@ -121,56 +121,42 @@ chunkFactor (AudioFormat nc _ bd) = nc * (bd `shiftR` 3)
 
 -- align raw chunks to bitdepth boundaries
 quantizeRaw :: Monad m => Transform' m RawFormattedChunk RawFormattedChunk
-quantizeRaw = umealy f V.empty
+quantizeRaw = mealy f V.empty . filterMaybe
   where
     f pre (RawFormattedChunk af v) =
         let !len' = V.length v'
             !v' = if V.null pre then v else pre <> v
         in case len' `rem` chunkFactor af of
             0 -> if V.null v'
-                      then (v',unfoldEmpty)
-                      else (V.empty,uReplicate 1 (RawFormattedChunk af v'))
+                      then (v',Nothing)
+                      else (V.empty,Just (RawFormattedChunk af v'))
             n -> case len' > chunkFactor af of
                 True  -> let !h  = V.unsafeTake (len'-n) v'
                              !r  = V.unsafeDrop (len'-n) v'
-                         in (r, uReplicate 1 (RawFormattedChunk af h))
-                False -> (v',unfoldEmpty)
+                         in (r, Just (RawFormattedChunk af h))
+                False -> (v',Nothing)
 {-# INLINE quantizeRaw #-}
 
 convTrans :: (MonadIO m, Functor m) => Transform' m RawFormattedChunk NormFormattedChunk
 convTrans = quantizeRaw . unsafeConvTrans
--- this works, but it's massively slower.  I suspect foldVec, but haven't
--- looked at core or anything.
---
--- Speeding up unfoldVec should help too, and I need to do that anyway.
 {-# INLINE convTrans #-}
 
--- this isn't quite right, because data at the end of a RawFormattedChunk can
--- be lost.  It's better to pass in the AudioFormat to create the Transform
--- which also works well with the delimitFold where this is called.  But that
--- makes it less compatible with the current convTrans code.
-{-# INLINE [1] convTrans2 #-}
-convTrans2 :: (MonadIO m) => Transform' m RawFormattedChunk NormFormattedChunk
-convTrans2 ofold0 = FoldM loop Nothing (maybe (getFold ofold0) getFold)
-  where
-    {-# INLINE loop #-}
-    loop (Just ofold) (RawFormattedChunk _af vec) = do
-        ofold' <- stepFold ofold vec
-        return (Just ofold')
-    loop (Nothing) (RawFormattedChunk af vec) = do
-        let tf = unfRaw af . maps (NormFormattedChunk af)
-        ofold' <- stepFold (tf ofold0) vec
-        return (Just ofold')
+{-# INLINE convTrans2 #-}
+convTrans2 :: (MonadIO m) => AudioFormat -> Transform' m (V.Vector Word8) NormFormattedChunk
+convTrans2 af = unfRaw af . maps (NormFormattedChunk af)
 
 {-# INLINE [1] unfRaw #-}
 unfRaw :: MonadIO m => AudioFormat -> Transform' m (V.Vector Word8) (V.Vector Double)
 unfRaw af = case bitDepth af of
     8  -> foldUnfolding unfoldVec . maps (fromIntegral :: Word8 -> Int8) . maps (normalize 8) . foldVec osize
+    -- the uf16 code is pretty slow, and the unfoldUf16 is worse than the
+    -- original convTrans.  Although uf16 should be pretty much the same as
+    -- convTrans, so maybe I just need to find a way to speed up umealy?
     -- 16 -> uf16 . maps (normalize 16) . foldVec osize
     16 -> foldUnfolding unfoldUf16 . maps (normalize 16 :: Int16 -> Double) . foldVec osize
     24 -> foldUnfolding unfoldVec . maps fromIntegral . fold24 . maps (normalize 24) . foldVec osize
   where
-    osize = 256
+    osize = 4096
 
 {-# INLINE unfoldUf16 #-}
 unfoldUf16 :: Monad m => UnfoldM m (V.Vector Word8) Int16
@@ -184,7 +170,7 @@ unfoldUf16 = UnfoldM mk f
     f v | not (V.null v) = return $ UnfoldStep (V.unsafeHead v) (V.unsafeDrop 1 v)
         | otherwise = unfoldDone
 
-{-# INLINE uf16 #-}
+{-# INLINE [1] uf16 #-}
 uf16 :: Monad m => Transform' m (V.Vector Word8) Int16
 uf16 = umealy f S1_0'
   where
@@ -197,6 +183,7 @@ uf16 = umealy f S1_0'
     {-# INLINE ufVec #-}
     ufVec vec = UnfoldM (const $ return v') f'
         where
+          {-# INLINE v' #-}
           v' :: V.Vector Int16
           v' = case V.unsafeToForeignPtr vec of
               (p,a,b) -> V.unsafeFromForeignPtr (castForeignPtr p) a (b `shiftR` 1)
