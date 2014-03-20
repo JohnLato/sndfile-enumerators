@@ -111,14 +111,27 @@ convTrans2 af = unfRaw af . maps (NormFormattedChunk af)
 unfRaw :: MonadIO m => AudioFormat -> Transform' m (V.Vector Word8) (V.Vector Double)
 unfRaw af = case bitDepth af of
     8  -> foldUnfolding unfoldVec . maps (fromIntegral :: Word8 -> Int8) . maps (normalize 8) . foldVec osize
+
     -- the uf16 code is pretty slow, and the unfoldUf16 is worse than the
-    -- original convTrans.  Although uf16 should be pretty much the same as
-    -- convTrans, so maybe I just need to find a way to speed up umealy?
-    -- 16 -> uf16 . maps (normalize 16) . foldVec osize
-    16 -> foldUnfolding unfoldUf16 . maps (normalize 16 :: Int16 -> Double) . foldVec osize
+    -- original convTrans, but better than unfoldingM :(.
+    16 -> uf16 . maps (normalize 16) . foldVec osize
+    -- 16 -> unfoldingM unfold2Uf16 . maps (normalize 16 :: Int16 -> Double) . foldVec osize
+    -- 16 -> foldUnfolding unfoldUf16 . maps (normalize 16 :: Int16 -> Double) . foldVec osize
     24 -> foldUnfolding unfoldVec . maps fromIntegral . fold24 . maps (normalize 24) . foldVec osize
   where
     osize = 4096
+
+{-# INLINE [1] unfold2Uf16 #-}
+unfold2Uf16 :: (Monad m) => V.Vector Word8 -> Unfold2 m Int16
+unfold2Uf16 vec8 = if V.length vec8 `rem` 2 == 0
+    then Unfold2 0 f
+    else error "extras"
+  where
+    vec = V.unsafeCast vec8 :: V.Vector Int16
+    l = V.length vec
+    {-# INLINE [0] f #-}
+    f ix | (ix < l)  = return $ UnfoldStep (V.unsafeIndex vec ix) (ix+1)
+         | otherwise = unfoldDone
 
 {-# INLINE unfoldUf16 #-}
 unfoldUf16 :: Monad m => UnfoldM m (V.Vector Word8) Int16
