@@ -46,45 +46,7 @@ be = fmap (==1) $ with (1 :: Word16) (\p -> peekByteOff p 1 :: IO Word8)
 hostToLE :: forall a. Storable a => V.Vector Word8 -> V.Vector a
 hostToLE vec = let be' = unsafePerformIO be in if be'
     then error "wrong endian-ness.  Ask the maintainer to implement hostToLE"
-{-
-              (fp, off, len) = VB.toForeignPtr vec
-              wSize = sizeOf $ Vec.head vec
-            in
-            loop wSize fp len off
--}
-    else let (ptr, offset,len) = V.unsafeToForeignPtr vec
-         in V.unsafeFromForeignPtr (castForeignPtr ptr)
-                                   offset
-                                   (len `quot` sizeOf (undefined :: a))
-
-{-
-swapBytes :: Int -> ForeignPtr a -> IO ()
-swapBytes wSize fp = withForeignPtr fp $ \p -> case wSize of
-  1 -> return ()
-  2 -> do
-    (w1 :: Word8) <- peekByteOff p 0
-    (w2 :: Word8) <- peekByteOff p 1
-    pokeByteOff p 0 w2
-    pokeByteOff p 1 w1
-  3 -> do
-    (w1 :: Word8) <- peekByteOff p 0
-    (w3 :: Word8) <- peekByteOff p 2
-    pokeByteOff p 0 w3
-    pokeByteOff p 2 w1
-  4 -> do
-    (w1 :: Word8) <- peekByteOff p 0
-    (w2 :: Word8) <- peekByteOff p 1
-    (w3 :: Word8) <- peekByteOff p 2
-    (w4 :: Word8) <- peekByteOff p 3
-    pokeByteOff p 0 w4
-    pokeByteOff p 1 w3
-    pokeByteOff p 2 w2
-    pokeByteOff p 3 w1
-  _ -> error "swapBytes called with wordsize > 4"
-
-w8 :: Word8
-w8 = 0
--}
+    else V.unsafeCast vec
 
 -- ---------------------
 -- convenience functions
