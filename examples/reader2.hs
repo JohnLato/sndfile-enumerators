@@ -3,7 +3,7 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE FlexibleInstances #-}
 
-{-# OPTIONS_GHC -fsimpl-tick-factor=200 #-}
+{-# OPTIONS_GHC -ddump-rule-firings -ddump-simpl -ddump-to-file #-}
 module Main where
 
 import Prelude as P
@@ -13,6 +13,7 @@ import qualified Data.Vector.Storable as V
 import           IterX
 import           IterX.Fusion
 import           System.Environment
+import Data.Functor.Identity
 
 main :: IO ()
 main = do
@@ -28,6 +29,7 @@ main = do
 {-# RULES
 -- this rule seems to hurt, needs a little more investigation?
 -- "<iterx>maps/foldingM" forall f g s. maps f (foldingM g s) = foldingM (\b -> g b . f) s
+"<iterx>maps/maps_2" forall x f g. maps f (maps g x) = maps (g . f) x
       #-}
 
 {-# INLINE t1 #-}
@@ -38,7 +40,14 @@ main = do
 --
 -- foldFoldable is slow, because the inner loop isn't unboxed?  WTF?
 t1 :: FoldM AudioMonad NormFormattedChunk Double
-t1 = maps nfChunkData . foldUnfolding2 unfold2Vec . maps abs $ folding max 0
+-- t1 = maps nfChunkData . foldUnfolding2 unfold2Vec . maps abs $ folding max 0
+-- t1 = maps nfChunkData . maps unfold2Vec . foldUnfolding2a . maps abs $ folding max 0
+
+-- this is nearly as fast as the plain vector code.  removing the
+-- `runIdentity` makes it a bit slower, but it's still pretty fast.
+-- t1 = maps nfChunkData . maps (\v -> runIdentity $ stepFold (foldUnfolding2 unfold2Vec . maps abs $ folding max 0) v >>= getFold) $ folding max 0
+-- t1 = maps nfChunkData . unfolding unfold2Vec . maps abs $ folding max 0
+t1 = maps nfChunkData . unfolding unfold2Vec . maps abs $ folding max 0
 -- t1 = maps nfChunkData . foldUnfolding unfoldVec $ folding maxf1 0
 -- t1 = maps nfChunkData . maps (V.maximum . V.map abs) $ folding max 0
 
