@@ -12,7 +12,7 @@ module Sound.Iteratee.Base (
   WritableAudio (..),
   AudioMonad,
   -- *** Functions to work with AudioMonad
-  module Control.Monad.Trans.State,
+  module Control.Monad.State.Strict,
   defaultChunkLength,
   -- ** Audio Format types
   AudioFormat (..),
@@ -36,7 +36,7 @@ where
 import Prelude as P
 
 import           Control.Exception
-import           Control.Monad.Trans.State
+import           Control.Monad.State.Strict
 import           Control.Monad.IO.Class
 import           System.IO
 import           Data.Data
